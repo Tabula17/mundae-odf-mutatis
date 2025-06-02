@@ -27,6 +27,7 @@ systemctl start unoserver-$port
 done
 ```
 ## Servidor
+### Iniciar el servidor de conversión manualmente  
 ```bash
 nohup php server.php > server.log 2>&1 &
 
