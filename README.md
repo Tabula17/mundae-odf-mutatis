@@ -79,6 +79,7 @@ php app/server.php
 ```bash
 php app/worker.php
 ```
+Más detalles sobre la configuración y uso del servidor y worker se pueden encontrar en el archivo [`app/README.md`](app/README.md).
 
 ### Ejemplo de uso del cliente
 
