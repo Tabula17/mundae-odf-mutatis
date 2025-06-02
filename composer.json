@@ -1,6 +1,19 @@
 {
   "name": "xvii/mundae-odf-mutatis",
-  "description": "description",
+  "description": "Servidor de alto rendimiento basado en Swoole para conversión de documentos ODF utilizando LibreOffice/unoserver, con soporte para procesamiento asíncrono y balanceo de carga",
+  "type": "library",
+  "keywords": [
+    "odf",
+    "libreoffice",
+    "unoserver",
+    "document-conversion",
+    "pdf-conversion",
+    "swoole",
+    "async",
+    "queue",
+    "load-balancer",
+    "mtls"
+  ],
   "minimum-stability": "dev",
   "license": "proprietary",
   "authors": [
@@ -30,5 +43,9 @@
     "ext-swoole": ">=5.0",
     "ext-redis": "*",
     "psr/log": "^3.0@dev"
+  },
+  "support": {
+    "issues": "https://github.com/tabula17/mundae-odf-mutatis/issues",
+    "source": "https://github.com/tabula17/mundae-odf-mutatis"
   }
 }

@@ -22,7 +22,7 @@ Implementa un sistema cliente-servidor con capacidades de procesamiento asíncro
 
 ## Requisitos
 
-- PHP 8.1 o superior
+- PHP 8.2 o superior
 - Swoole PHP Extension
 - Redis (para funcionalidad de cola)
 - LibreOffice/unoserver
