@@ -11,13 +11,52 @@ use Tabula17\Satelles\Utilis\Queue\QueueInterface;
 use Tabula17\Satelles\Utilis\Middleware\TCPmTLSAuthMiddleware;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Servidor de conversión de documentos ODF
+ * 
+ * Implementa un servidor TCP basado en Swoole que maneja solicitudes de conversión
+ * de documentos, soportando procesamiento síncrono y asíncrono, balanceo de carga
+ * y autenticación mTLS.
+ *
+ * @package Tabula17\Mundae\Odf\Mutatis\Server
+ */
 class ConversionServer
 {
+    /**
+     * @var Server Instancia del servidor Swoole
+     */
     private Server $server;
+
+    /**
+     * @var UnoserverLoadBalancer Gestor de balanceo de carga para instancias unoserver
+     */
     private UnoserverLoadBalancer $converter;
+
+    /**
+     * @var bool Estado actual del servidor
+     */
     private bool $isRunning = false;
+
+    /**
+     * @var bool Indica si el sistema de cola está habilitado
+     */
     private bool $queueEnabled;
 
+    /**
+     * Constructor del servidor de conversión
+     *
+     * @param string $host Dirección IP para escuchar
+     * @param int $port Puerto para escuchar
+     * @param ServerHealthMonitor $healthMonitor Monitor de salud de instancias unoserver
+     * @param int $workers Número de workers
+     * @param int $task_workers Número de task workers
+     * @param int $concurrency Límite de conversiones simultáneas
+     * @param QueueInterface|null $queue Sistema de cola (opcional)
+     * @param string|null $log_file Ruta al archivo de log
+     * @param LoggerInterface|null $logger Logger PSR-3 (opcional)
+     * @param TCPmTLSAuthMiddleware|null $mtlsMiddleware Middleware para mTLS (opcional)
+     * @param array|null $sslSettings Configuración SSL (requerida si se usa mTLS)
+     */
     public function __construct(
         private readonly string                 $host,
         private readonly int                    $port,
@@ -30,11 +69,15 @@ class ConversionServer
         private readonly ?LoggerInterface       $logger = null,
         private readonly ?TCPmTLSAuthMiddleware $mtlsMiddleware = null,
         private readonly ?array                 $sslSettings = null
-    )
-    {
+    ) {
         $this->queueEnabled = $queue !== null;
     }
 
+    /**
+     * Inicializa el balanceador de carga de unoserver
+     *
+     * @return void
+     */
     private function initializeConverter(): void
     {
         $this->converter = new UnoserverLoadBalancer(
@@ -43,11 +86,22 @@ class ConversionServer
         );
     }
 
+    /**
+     * Inicializa todos los componentes necesarios para el servidor
+     *
+     * @return void
+     */
     private function initializeComponents(): void
     {
         $this->initializeConverter();
     }
 
+    /**
+     * Inicia el servidor de conversión
+     *
+     * @throws RuntimeException Si el servidor ya está en ejecución
+     * @return void
+     */
     public function start(): void
     {
         if ($this->isRunning) {
@@ -62,6 +116,13 @@ class ConversionServer
         $this->server->start();
     }
 
+    /**
+     * Valida y completa la configuración SSL
+     *
+     * @param array $settings Configuración SSL a validar
+     * @throws InvalidArgumentException Si faltan configuraciones requeridas
+     * @return array Configuración SSL validada y completada
+     */
     private function validateSSLSettings(array $settings): array
     {
         $requiredKeys = ['ssl_cert_file', 'ssl_key_file', 'ssl_client_cert_file'];
@@ -88,6 +149,11 @@ class ConversionServer
         return $settings;
     }
 
+    /**
+     * Crea y configura el servidor Swoole
+     *
+     * @return void
+     */
     private function createServer(): void
     {
         $this->server = new Server(
@@ -113,6 +179,11 @@ class ConversionServer
         $this->server->set($serverSettings);
     }
 
+    /**
+     * Registra los callbacks del servidor
+     *
+     * @return void
+     */
     private function registerCallbacks(): void
     {
         $this->server->on('start', function (Server $server) {
@@ -148,6 +219,14 @@ class ConversionServer
         });
     }
 
+    /**
+     * Maneja las solicitudes entrantes
+     *
+     * @param Server $server Instancia del servidor
+     * @param int $fd Descriptor de archivo del cliente
+     * @param string $data Datos recibidos
+     * @return void
+     */
     private function handleIncomingRequest(Server $server, int $fd, string $data): void
     {
         if ($this->mtlsMiddleware !== null) {
@@ -159,6 +238,13 @@ class ConversionServer
         }
     }
 
+    /**
+     * Procesa una solicitud autenticada
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param string $data Datos de la solicitud
+     * @return void
+     */
     private function processAuthenticatedRequest(int $fd, string $data): void
     {
         try {
@@ -173,6 +259,13 @@ class ConversionServer
         }
     }
 
+    /**
+     * Procesa una solicitud de conversión
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param string $data Datos JSON de la solicitud
+     * @return void
+     */
     private function processRequest(int $fd, string $data): void
     {
         try {
@@ -190,12 +283,25 @@ class ConversionServer
         }
     }
 
+    /**
+     * Determina si la solicitud debe procesarse de forma asíncrona
+     *
+     * @param array $request Datos de la solicitud
+     * @return bool
+     */
     private function shouldProcessAsync(array $request): bool
     {
         return ($request['async'] ?? false) ||
             ($this->queueEnabled && ($request['queue'] ?? false));
     }
 
+    /**
+     * Procesa una solicitud de forma síncrona
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param array $request Datos de la solicitud
+     * @return void
+     */
     private function processSync(int $fd, array $request): void
     {
         try {
@@ -216,6 +322,13 @@ class ConversionServer
         }
     }
 
+    /**
+     * Procesa una solicitud de forma asíncrona
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param array $request Datos de la solicitud
+     * @return void
+     */
     private function processAsync(int $fd, array $request): void
     {
         if ($this->queue && ($request['queue'] ?? false)) {
@@ -232,6 +345,12 @@ class ConversionServer
         }
     }
 
+    /**
+     * Procesa una tarea asíncrona
+     *
+     * @param array $taskData Datos de la tarea
+     * @return array Resultado del procesamiento
+     */
     private function processTask(array $taskData): array
     {
         try {
@@ -261,11 +380,25 @@ class ConversionServer
         }
     }
 
+    /**
+     * Envía una respuesta al cliente
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param array $response Datos de la respuesta
+     * @return void
+     */
     private function sendResponse(int $fd, array $response): void
     {
         $this->server->send($fd, json_encode($response));
     }
 
+    /**
+     * Envía un mensaje de error al cliente
+     *
+     * @param int $fd Descriptor de archivo del cliente
+     * @param string $message Mensaje de error
+     * @return void
+     */
     private function sendError(int $fd, string $message): void
     {
         $this->sendResponse($fd, [
@@ -274,6 +407,12 @@ class ConversionServer
         ]);
     }
 
+    /**
+     * Obtiene el resultado de una tarea
+     *
+     * @param string $taskId ID de la tarea
+     * @return array|null Resultado de la tarea o null si no existe
+     */
     public function getResult(string $taskId): ?array
     {
         if ($this->queueEnabled) {

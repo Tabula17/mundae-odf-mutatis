@@ -1,4 +1,31 @@
 ## Ejemplos de uso
+
+## Instancias de Unoserver
+Antes instalar [Unoserver](https://github.com/unoconv/unoserver).
+
+```bash
+# Ejemplo iniciando 3 instancias
+unoserver --port 2003 &
+unoserver --port 2004 &
+unoserver --port 2005 &
+```
+Con systemd, puedes crear un servicio para cada instancia de Unoserver:
+```ini
+# Usando systemd para múltiples instancias
+for port in {2003..2005}; do
+cat > /etc/systemd/system/unoserver-$port.service <<EOF
+[Unit]
+Description=Unoserver instance $port
+
+[Service]
+ExecStart=/usr/bin/unoserver --port $port
+Restart=always
+EOF
+
+systemctl enable unoserver-$port
+systemctl start unoserver-$port
+done
+```
 ## Servidor
 ```bash
 nohup php server.php > server.log 2>&1 &

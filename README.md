@@ -30,7 +30,7 @@ Implementa un sistema cliente-servidor con capacidades de procesamiento asíncro
 ## Instalación
 
 ```bash
-composer require tabula17/mundae-odf-mutatis
+composer require xvii/mundae-odf-mutatis
 ```
 
 ## Configuración

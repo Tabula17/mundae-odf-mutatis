@@ -9,17 +9,55 @@ use Tabula17\Satelles\Utilis\Queue\QueueInterface;
 use Tabula17\Satelles\Utilis\Queue\RedisQueue;
 
 /**
+ * Worker para procesamiento asíncrono de conversiones
+ * 
+ * Procesa las tareas de conversión en segundo plano, consumiendo
+ * solicitudes desde una cola de Redis y ejecutando las conversiones
+ * utilizando instancias unoserver balanceadas.
+ *
+ * @package Tabula17\Mundae\Odf\Mutatis\Worker
  * @property ServerHealthMonitor $healthMonitor
  */
 class ConversionWorker
 {
+    /**
+     * @var UnoserverLoadBalancer Gestor de balanceo de carga
+     */
     private UnoserverLoadBalancer $converter;
+
+    /**
+     * @var QueueInterface Sistema de cola
+     */
     private QueueInterface $queue;
+
+    /**
+     * @var bool Bandera para control de apagado
+     */
     private bool $shouldStop = false;
+
+    /**
+     * @var int Límite de conversiones simultáneas
+     */
     private int $concurrency;
+
+    /**
+     * @var ServerHealthMonitor Monitor de salud de servidores
+     */
     private ServerHealthMonitor $healthMonitor;
+
+    /**
+     * @var int Tiempo límite para conversiones
+     */
     private int $timeout;
 
+    /**
+     * Constructor del worker
+     *
+     * @param QueueInterface $queue Sistema de cola para procesar
+     * @param ServerHealthMonitor $healthMonitor Monitor de salud de servidores
+     * @param int $concurrency Número máximo de conversiones simultáneas
+     * @param int $timeout Tiempo límite para conversiones en segundos
+     */
     public function __construct(QueueInterface $queue, ServerHealthMonitor $healthMonitor, int $concurrency = 4, int $timeout = 10)
     {
         $this->queue = $queue;
@@ -28,6 +66,11 @@ class ConversionWorker
         $this->concurrency = $concurrency;
     }
 
+    /**
+     * Inicia el worker y comienza a procesar tareas
+     *
+     * @return void
+     */
     public function start(): void
     {
         // Manejar señales para shutdown graceful
@@ -45,6 +88,11 @@ class ConversionWorker
         echo "Worker detenido correctamente\n";
     }
 
+    /**
+     * Procesa la siguiente tarea en la cola
+     *
+     * @return void
+     */
     private function processNextTask(): void
     {
         $task = $this->queue->pop();
@@ -87,6 +135,11 @@ class ConversionWorker
         }
     }
 
+    /**
+     * Inicializa el conversor si aún no está inicializado
+     *
+     * @return void
+     */
     private function initializeConverter(): void
     {
         if (!isset($this->converter)) {
@@ -99,6 +152,13 @@ class ConversionWorker
         }
     }
 
+    /**
+     * Almacena el resultado de una tarea en la cola
+     *
+     * @param string $taskId ID de la tarea
+     * @param array $result Resultado de la conversión
+     * @return void
+     */
     private function storeResult(string $taskId, array $result): void
     {
         $this->queue->pushResult(
@@ -106,6 +166,12 @@ class ConversionWorker
             result: $result
         );
     }
+
+    /**
+     * Detiene el worker de forma segura
+     *
+     * @return void
+     */
     public function stop(): void
     {
         $this->shouldStop = true;
@@ -114,11 +180,16 @@ class ConversionWorker
         }
         echo "Worker detenido correctamente\n";
     }
+
+    /**
+     * Obtiene el monitor de salud actual
+     *
+     * @return ServerHealthMonitor
+     */
     public function getHealthMonitor(): ServerHealthMonitor
     {
         return $this->healthMonitor;
     }
-
 }
 // Ejecutar worker
 //$worker = new ConversionWorker();

@@ -5,15 +5,48 @@ namespace Tabula17\Mundae\Odf\Mutatis\Client;
 use Swoole\Coroutine\Client;
 use Tabula17\Mundae\Odf\Mutatis\Exception\RuntimeException;
 
+/**
+ * Cliente para el servicio de conversión de documentos ODF
+ * 
+ * Esta clase proporciona una interfaz para conectarse y enviar solicitudes
+ * al servidor de conversión de documentos ODF.
+ *
+ * @package Tabula17\Mundae\Odf\Mutatis\Client
+ */
 class ConversionClient {
+    /**
+     * @var string Dirección IP o hostname del servidor
+     */
     private string $host;
+
+    /**
+     * @var int Puerto del servidor
+     */
     private int $port;
 
+    /**
+     * Constructor del cliente de conversión
+     *
+     * @param string $host Dirección IP o hostname del servidor
+     * @param int $port Puerto del servidor
+     */
     public function __construct(string $host = '127.0.0.1', int $port = 9501) {
         $this->host = $host;
         $this->port = $port;
     }
 
+    /**
+     * Envía una solicitud de conversión al servidor
+     *
+     * @param string $inputPath Ruta al archivo de entrada
+     * @param string $outputFormat Formato de salida deseado (ej. 'pdf', 'docx')
+     * @param string|null $outputPath Ruta donde se guardará el archivo convertido
+     * @param bool $async Indica si la conversión debe ser asíncrona
+     * @param bool $useQueue Indica si se debe usar el sistema de cola
+     * 
+     * @throws RuntimeException Si hay un error de conexión con el servidor
+     * @return array Respuesta del servidor con el resultado de la conversión
+     */
     public function convert(
         string $inputPath,
         string $outputFormat,
@@ -42,22 +75,3 @@ class ConversionClient {
         return json_decode($response, true);
     }
 }
-/*
- * Ejemplo de uso del cliente de conversión:
- *
- * Este cliente se conecta a un servidor de conversión que escucha en el puerto 9501
- * y envía una solicitud para convertir un archivo ODT a PDF.
- *
- * Asegúrate de que el servidor esté corriendo antes de ejecutar este código.
- *
-// Uso:
-$client = new ConversionClient();
-$result = $client->convert(
-    '/docs/informe.odt',
-    'pdf',
-    '/docs/informe.pdf',
-    true,  // async
-    false  // no usar cola
-);
-
-print_r($result);*/
