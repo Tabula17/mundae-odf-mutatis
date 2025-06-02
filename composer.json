@@ -1,0 +1,28 @@
+{
+  "name": "xvii/mundae-odf-mutatis",
+  "description": "description",
+  "minimum-stability": "dev",
+  "license": "proprietary",
+  "authors": [
+    {
+      "name": "Martín Panizzo",
+      "email": "code.tabula17@gmail.com.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Tabula17\\Mundae\\Odf\\Mutatis\\": "src/"
+    }
+  },
+  "repositories": [
+    {"type": "composer", "url": "https://tabula17.repo.repman.io"}
+  ],
+  "require": {
+    "php": ">=8.2",
+    "xvii/satelles-odf-adiutor": "1.0.x-dev",
+    "xvii/satelles-utilis-proelio": "^1.0@dev",
+    "ext-swoole": ">=5.0",
+    "ext-redis": "*",
+    "psr/log": "^3.0@dev"
+  }
+}
