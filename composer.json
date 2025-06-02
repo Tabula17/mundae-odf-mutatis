@@ -9,6 +9,12 @@
       "email": "code.tabula17@gmail.com.com"
     }
   ],
+  "version": "1.0.0",
+  "extra": {
+    "branch-alias": {
+      "dev-main": "1.0.x-dev"
+    }
+  },
   "autoload": {
     "psr-4": {
       "Tabula17\\Mundae\\Odf\\Mutatis\\": "src/"
