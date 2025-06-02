@@ -1,8 +1,8 @@
-## Ejemplos de uso
+## Ejemplos de uso 
 
 ## Instancias de Unoserver
-Antes instalar [Unoserver](https://github.com/unoconv/unoserver).
-
+Para usar el servicio debes instalar [Unoserver](https://github.com/unoconv/unoserver).
+Una vez instalado, puedes iniciar múltiples instancias de Unoserver en diferentes puertos para manejar cargas concurrentes.
 ```bash
 # Ejemplo iniciando 3 instancias
 unoserver --port 2003 &
@@ -119,7 +119,7 @@ openssl req -new -key client.key -out client.csr -subj "/CN=client"
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365
 ```
 #### Configuración del servidor para mTLS
-Para habilitar mTLS en tu servidor, asegúrate de que tu configuración de Swoole incluya los certificados generados:
+Para habilitar mTLS en tu servidor, asegúrate de que la configuración de la aplicación incluya los certificados generados:
 ```php
 // config/config.php
 return [
