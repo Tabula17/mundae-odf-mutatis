@@ -25,7 +25,7 @@ return [
         'enabled' => true,
         'ssl_cert_file' => '/path/to/cert.pem',
         'ssl_key_file' => '/path/to/key.pem',
-        'ssl_client_cert_file' => '/path/to/client_cert.pem',
+        'ssl_client_cert_file' => true,
         'ssl_verify_peer' => true,
         'ssl_allow_self_signed' => false
     ],

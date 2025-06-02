@@ -61,7 +61,7 @@ return [
         'enabled' => false,
         'ssl_cert_file' => '/path/to/cert.pem',
         'ssl_key_file' => '/path/to/key.pem',
-        'ssl_client_cert_file' => '/path/to/client-cert.pem'
+        'ssl_client_cert_file' => true
     ]
 ];
 ```
