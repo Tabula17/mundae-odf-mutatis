@@ -1,10 +1,14 @@
-# Mundae ODF Mutatis
+# XVII: 🌍 mundae-odf-mutatis
+![PHP Version](https://img.shields.io/badge/PHP-8.2%2B-blue)
+![License](https://img.shields.io/github/license/Tabula17/mundae-odf-mutatis)
+![Last commit](https://img.shields.io/github/last-commit/Tabula17mundae-odf-mutatis)
 
-Servidor de conversión de documentos ODF (Open Document Format) basado en Swoole y unoserver.
+Servidor de conversión de documentos ODF (Open Document Format) basado en Swoole y Unoserver.
 
 ## Descripción
 
-Mundae ODF Mutatis es un servicio de conversión de documentos que utiliza LibreOffice/unoserver como backend para realizar conversiones de formatos ODF a otros formatos como PDF. Implementa un sistema cliente-servidor con capacidades de procesamiento asíncrono y balanceo de carga.
+🌍 mundae-odf-mutatis es un servicio de conversión de documentos que utiliza LibreOffice/unoserver como backend para realizar conversiones de formatos ODF a otros formatos como PDF. 
+Implementa un sistema cliente-servidor con capacidades de procesamiento asíncrono y balanceo de carga.
 
 ## Características
 
@@ -103,3 +107,6 @@ Este proyecto está licenciado bajo [MIT License].
 ## Contribución
 
 Las contribuciones son bienvenidas. Por favor, asegúrate de actualizar las pruebas según corresponda.
+
+
+###### 🌌 Ad astra per codicem
