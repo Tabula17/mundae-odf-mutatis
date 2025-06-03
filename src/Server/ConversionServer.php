@@ -13,7 +13,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Servidor de conversión de documentos ODF
- * 
+ *
  * Implementa un servidor TCP basado en Swoole que maneja solicitudes de conversión
  * de documentos, soportando procesamiento síncrono y asíncrono, balanceo de carga
  * y autenticación mTLS.
@@ -69,7 +69,8 @@ class ConversionServer
         private readonly ?LoggerInterface       $logger = null,
         private readonly ?TCPmTLSAuthMiddleware $mtlsMiddleware = null,
         private readonly ?array                 $sslSettings = null
-    ) {
+    )
+    {
         $this->queueEnabled = $queue !== null;
     }
 
@@ -99,8 +100,8 @@ class ConversionServer
     /**
      * Inicia el servidor de conversión
      *
-     * @throws RuntimeException Si el servidor ya está en ejecución
      * @return void
+     * @throws RuntimeException Si el servidor ya está en ejecución
      */
     public function start(): void
     {
@@ -120,8 +121,8 @@ class ConversionServer
      * Valida y completa la configuración SSL
      *
      * @param array $settings Configuración SSL a validar
-     * @throws InvalidArgumentException Si faltan configuraciones requeridas
      * @return array Configuración SSL validada y completada
+     * @throws InvalidArgumentException Si faltan configuraciones requeridas
      */
     private function validateSSLSettings(array $settings): array
     {
@@ -217,6 +218,23 @@ class ConversionServer
         $this->server->on('close', function (Server $server, int $fd) {
             $this->logger?->debug("Cliente desconectado", ['fd' => $fd]);
         });
+        $this->server->on('shutdown', function (Server $server) {
+            $this->logger?->info("Servidor detenido");
+            $this->healthMonitor->stopMonitoring();
+            $this->converter->stop();
+        });
+        $this->server->on('error', function (Server $server, int $code, string $message) {
+            $this->logger?->error("Error del servidor: {$message} (Código: {$code})");
+        });
+        $this->server->on('pipeMessage', function (Server $server, int $fromWorkerId, string $message) {
+            $this->logger?->debug("Mensaje de pipe recibido", [
+                'fromWorkerId' => $fromWorkerId,
+                'message' => $message
+            ]);
+        });
+        $this->server->on('workerError', function (Server $server, int $workerId, int $code, string $message) {
+            $this->logger?->error("Error en el worker #$workerId: {$message} (Código: {$code})");
+        });
     }
 
     /**
@@ -270,7 +288,7 @@ class ConversionServer
     {
         try {
             $request = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
-
+            echo "Received request: " . json_encode($request) . "\n";
             if ($this->shouldProcessAsync($request)) {
                 $this->processAsync($fd, $request);
             } else {
@@ -305,12 +323,15 @@ class ConversionServer
     private function processSync(int $fd, array $request): void
     {
         try {
+            if (empty($request['file_path']) && empty($request['file_content'])) {
+                throw new InvalidArgumentException("Debe proporcionar 'file_path' o 'file_content'");
+            }
             $result = $this->converter->convertSync(
-                $request['file_path'],
-                $request['output_format'],
-                $request['file_content'] ?? null,
-                $request['output_path'] ?? null,
-                $request['mode'] ?? 'stream'
+                filePath: $request['file_path'] ?? null,
+                fileContent: $request['file_content'] ?? null,
+                outputFormat: $request['output_format'] ?? 'pdf',
+                outPath: $request['output_path'] ?? null,
+                mode: $request['mode'] ?? 'stream'
             );
 
             $this->sendResponse($fd, [
@@ -355,11 +376,11 @@ class ConversionServer
     {
         try {
             $result = $this->converter->convertSync(
-                $taskData['request']['file_path'],
-                $taskData['request']['output_format'],
-                $taskData['request']['file_content'] ?? null,
-                $taskData['request']['output_path'] ?? null,
-                $taskData['request']['mode'] ?? 'stream'
+                filePath: $taskData['request']['file_path'],
+                fileContent: $taskData['request']['output_format'],
+                outputFormat: $taskData['request']['file_content'] ?? null,
+                outPath: $taskData['request']['output_path'] ?? null,
+                mode: $taskData['request']['mode'] ?? 'stream'
             );
 
             return [
