@@ -118,16 +118,18 @@ class ConversionClient
 
         while (true) {
             $response = $socket->recv();
-            if($response !== '') {
+            if ($response !== false) {
                 // Si recibimos una respuesta, salimos del bucle
                 $socket->close();
                 break;
             }
 
-            if (($response === false) && $socket->errCode !== SOCKET_ETIMEDOUT) {
+            if ($socket->errCode !== SOCKET_ETIMEDOUT) {
                 $socket->close();
                 throw new RuntimeException("Failed to receive server response {$socket->errCode}");
             }
+
+
         }
 
         $decodedResponse = json_decode($response, true, 512, JSON_BIGINT_AS_STRING);
