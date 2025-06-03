@@ -11,7 +11,7 @@ return [
     'unoserver_instances' => [
         ['host' => '127.0.0.1', 'port' => 2003],
         ['host' => '127.0.0.1', 'port' => 2004],
-        ['host' => '127.0.0.1', 'port' => 2005]
+       // ['host' => '127.0.0.1', 'port' => 2005]
     ],
     'concurrency' => 20,
     'queue' => [
@@ -22,7 +22,7 @@ return [
         'channel' => 'document_conversions'
     ],
     'ssl' => [
-        'enabled' => true,
+        'enabled' => false,
         'ssl_cert_file' => '/path/to/cert.pem',
         'ssl_key_file' => '/path/to/key.pem',
         'ssl_client_cert_file' => true,
