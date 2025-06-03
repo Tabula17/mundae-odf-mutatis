@@ -115,7 +115,7 @@ class ConversionClient
             $request['file_path'] = null; // No necesitamos el path si usamos contenido
         }
 
-        $socket->send(json_encode($request, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_BIGINT_AS_STRING | JSON_INVALID_UTF8_IGNORE ));
+        $socket->send(json_encode($request, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_BIGINT_AS_STRING | JSON_INVALID_UTF8_IGNORE ));
 
         while (true) {
             $response = $socket->recv();
