@@ -100,7 +100,8 @@ class ConversionClient
             'output_format' => $outputFormat,
             'output_path' => $outputPath,
             'async' => $async,
-            'queue' => $useQueue
+            'queue' => $useQueue,
+            'mode' => $mode
         ];
         // Leer el archivo si no se provee contenido (en corrutina para no bloquear)
         if ($fileContent === null && $filePath !== null && $mode === 'stream') {
