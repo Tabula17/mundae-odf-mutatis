@@ -288,10 +288,11 @@ class ConversionServer
     {
         try {
             $request = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
-            echo "Received request: " . json_encode($request) . "\n";
+            echo "🌍 Received request: " . json_encode($request) . "\n";
             if ($this->shouldProcessAsync($request)) {
                 $this->processAsync($fd, $request);
             } else {
+                echo "🌍 Processing request synchronously\n";
                 $this->processSync($fd, $request);
             }
         } catch (\JsonException $e) {
@@ -326,6 +327,7 @@ class ConversionServer
             if (empty($request['file_path']) && empty($request['file_content'])) {
                 throw new InvalidArgumentException("Debe proporcionar 'file_path' o 'file_content'");
             }
+            echo "🌍 Processing request synchronously {$request['mode']}\n";
             $result = $this->converter->convertSync(
                 filePath: $request['file_path'] ?? null,
                 fileContent: $request['file_content'] ?? null,
@@ -410,7 +412,7 @@ class ConversionServer
      */
     private function sendResponse(int $fd, array $response): void
     {
-        $this->server->send($fd, json_encode($response));
+        $this->server->send($fd, json_encode($response, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_INVALID_UTF8_IGNORE));
     }
 
     /**

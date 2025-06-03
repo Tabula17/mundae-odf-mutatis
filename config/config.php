@@ -6,6 +6,7 @@ return [
         'port' => 9501,
         'workers' => 4,
         'task_workers' => 8,
+        'package_max_length' => 1024 * 1024 * 100, // 10 MB
         'log_file' => '/var/log/conversion_server.log'
     ],
     'unoserver_instances' => [

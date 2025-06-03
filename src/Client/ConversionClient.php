@@ -10,7 +10,8 @@ use Tabula17\Mundae\Odf\Mutatis\Exception\RuntimeException;
 /**
  * Cliente para el servicio de conversión de documentos ODF con soporte mTLS
  */
-class ConversionClient {
+class ConversionClient
+{
     private string $host;
     private int $port;
     private ?string $sslCertFile;
@@ -29,13 +30,14 @@ class ConversionClient {
      * @param bool $sslVerifyPeer Verificar certificado del servidor
      */
     public function __construct(
-        string $host = '127.0.0.1',
-        int $port = 9501,
+        string  $host = '127.0.0.1',
+        int     $port = 9501,
         ?string $sslCertFile = null,
         ?string $sslKeyFile = null,
         ?string $sslCaFile = null,
-        bool $sslVerifyPeer = true
-    ) {
+        bool    $sslVerifyPeer = true
+    )
+    {
         $this->host = $host;
         $this->port = $port;
         $this->sslCertFile = $sslCertFile;
@@ -61,13 +63,14 @@ class ConversionClient {
      */
     public function convert(
         ?string $filePath = null,
-        string $outputFormat = 'pdf',
+        string  $outputFormat = 'pdf',
         ?string $fileContent = null,
         ?string $outputPath = null,
-        bool $async = false,
-        bool $useQueue = false,
-        string $mode = 'stream'
-    ): array {
+        bool    $async = false,
+        bool    $useQueue = false,
+        string  $mode = 'stream'
+    ): array
+    {
         $socket = new Client(SWOOLE_SOCK_TCP);
 
 
@@ -102,24 +105,32 @@ class ConversionClient {
         // Leer el archivo si no se provee contenido (en corrutina para no bloquear)
         if ($fileContent === null && $filePath !== null && $mode === 'stream') {
             $request['file_content'] = System::readFile($filePath);
-            if ($request['file_content']  === false) {
+            if ($request['file_content'] === false) {
                 throw new \RuntimeException("No se pudo leer el archivo: $filePath");
             }
             // Opcional: enviar metadata si tenemos filePath
             $request['file_name'] = basename($filePath);
-            $request['file_size'] = strlen($request['file_content'] );
-            $request['file_path']  = null; // No necesitamos el path si usamos contenido
+            $request['file_size'] = strlen($request['file_content']);
+            $request['file_path'] = null; // No necesitamos el path si usamos contenido
         }
 
-        $socket->send(json_encode($request));
-        $response = $socket->recv();
-        $socket->close();
+        $socket->send(json_encode($request, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
 
-        if ($response === false) {
-            throw new RuntimeException("Failed to receive server response");
+        while (true) {
+            $response = $socket->recv();
+            if($response !== '') {
+                // Si recibimos una respuesta, salimos del bucle
+                $socket->close();
+                break;
+            }
+
+            if (($response === false) && $socket->errCode !== SOCKET_ETIMEDOUT) {
+                $socket->close();
+                throw new RuntimeException("Failed to receive server response {$socket->errCode}");
+            }
         }
 
-        $decodedResponse = json_decode($response, true);
+        $decodedResponse = json_decode($response, true, 512, JSON_BIGINT_AS_STRING);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new RuntimeException("Invalid server response: " . json_last_error_msg());
         }
@@ -137,8 +148,9 @@ class ConversionClient {
         callable $callback,
         ?string $outputPath = null,
         bool $useQueue = false
-    ): void {
-        Coroutine::create(function() use ($fileInput, $outputFormat, $callback, $outputPath, $useQueue) {
+    ): void
+    {
+        Coroutine::create(function () use ($fileInput, $outputFormat, $callback, $outputPath, $useQueue) {
             try {
                 if (is_string($fileInput) && is_file($fileInput)) {
                     $result = $this->convert($fileInput, $outputFormat, null, $outputPath, true, $useQueue);
@@ -155,6 +167,7 @@ class ConversionClient {
             }
         });
     }
+
     /**
      * Método para verificar rápidamente la conectividad con el servidor
      */
