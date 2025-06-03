@@ -115,7 +115,7 @@ class ConversionClient
             $request['file_path'] = null; // No necesitamos el path si usamos contenido
         }
 
-        $socket->send(json_encode($request, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE));
+        $socket->send(json_encode($request, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_BIGINT_AS_STRING | JSON_INVALID_UTF8_IGNORE ));
 
         while (true) {
             $response = $socket->recv();
@@ -133,7 +133,7 @@ class ConversionClient
 
         }
 
-        $decodedResponse = json_decode($response, true, 512, JSON_BIGINT_AS_STRING);
+        $decodedResponse = json_decode($response, true, 512, JSON_BIGINT_AS_STRING | JSON_INVALID_UTF8_SUBSTITUTE | JSON_INVALID_UTF8_IGNORE);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new RuntimeException("Invalid server response: " . json_last_error_msg());
         }

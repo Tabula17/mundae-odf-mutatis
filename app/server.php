@@ -53,6 +53,7 @@ $server = new ConversionServer(
     log_file: $config['server']['log_file'] ?? null,
     logger: null, // Aquí puedes pasar un logger si lo necesitas
     mtlsMiddleware: $mtlsMiddleware,
-    sslSettings: $mtlsConfig
+    sslSettings: $mtlsConfig,
+    timeout: 15, // Tiempo límite para cada tarea en segundos
 );
 $server->start();
