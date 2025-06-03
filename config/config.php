@@ -12,7 +12,7 @@ return [
     'unoserver_instances' => [
         ['host' => '127.0.0.1', 'port' => 2003],
         ['host' => '127.0.0.1', 'port' => 2004],
-       // ['host' => '127.0.0.1', 'port' => 2005]
+        ['host' => '127.0.0.1', 'port' => 2005]
     ],
     'concurrency' => 20,
     'queue' => [

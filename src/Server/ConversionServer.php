@@ -68,7 +68,8 @@ class ConversionServer
         private readonly ?string                $log_file = null,
         private readonly ?LoggerInterface       $logger = null,
         private readonly ?TCPmTLSAuthMiddleware $mtlsMiddleware = null,
-        private readonly ?array                 $sslSettings = null
+        private readonly ?array                 $sslSettings = null,
+        private readonly ?int                   $timeout = 10
     )
     {
         $this->queueEnabled = $queue !== null;
@@ -83,7 +84,8 @@ class ConversionServer
     {
         $this->converter = new UnoserverLoadBalancer(
             $this->healthMonitor,
-            $this->concurrency ?? 10
+            $this->concurrency ?? 10,
+            $this->timeout
         );
     }
 
