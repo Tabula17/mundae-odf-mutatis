@@ -157,21 +157,18 @@ class ConversionClient
             throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
-        // 1. Esperar READY del servidor
-        $ready = $this->waitForResponse($socket, "READY\n");
-        if ($ready !== "READY\n") {
+        try {
+            $this->debug("Enviando archivo en chunks: $filePath"); // Debug
+            // Esperar READY específico
+            $this->waitForResponse($socket, "READY\n", $this->timeout);
+
+            while (!feof($file)) {
+                $chunk = fread($file, $chunkSize);
+                $this->sendChunk($socket, $chunk);
+            }
+        } finally {
             fclose($file);
-            $this->error("[Error] Respuesta inesperada del servidor: " . ($ready ?: "empty response")); // Debug
-            throw new RuntimeException("Protocol error: Expected READY, got " . ($ready ?: "empty response"));
         }
-
-        // 2. Enviar chunks y esperar ACK
-        while (!feof($file)) {
-            $chunk = fread($file, $chunkSize);
-            $this->sendChunk($socket, $chunk);
-        }
-
-        fclose($file);
     }
 
     private function sendContentInChunks(Client $socket, string $content, int $chunkSize): void
@@ -204,22 +201,62 @@ class ConversionClient
         }
 
         // Esperar ACK con timeout
-        $ack = $this->waitForResponse($socket, "ACK\n");
-        if ($ack !== "ACK\n") {
-            $this->debug("[Error] Confirmación de chunk inválida: " . ($ack ?: "empty response")); // Debug
-            throw new RuntimeException("Error en confirmación del chunk");
-        }
+        $this->waitForResponse($socket, "ACK\n", $this->timeout);
     }
-
-    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
-    {
+    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string {
         $startTime = microtime(true);
         $response = '';
+        $expectedLength = strlen($expected);
+        $this->debug("Esperando respuesta del servidor..."); // Debug
 
         while (true) {
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->debug("[Error] Timeout esperando respuesta del servidor"); // Debug
+                $this->debug("Timeout esperando respuesta del servidor"); // Debug
+                throw new RuntimeException("Timeout esperando respuesta: '$expected'");
+            }
+
+            $data = $socket->recv(1.0); // Timeout corto para chequeos
+
+            if ($data === false) {
+                // Manejar diferentes códigos de error
+                if ($socket->errCode === SOCKET_ETIMEDOUT) {
+                    continue; // Reintentar si es solo timeout
+                }
+                throw new RuntimeException("Error de conexión [{$socket->errCode}]: {$socket->errMsg}");
+            }
+
+            if ($data !== '') {
+                $response .= $data;
+                $this->debug("Respuesta del servidor: " . trim($data));
+
+                // Verificar si tenemos la respuesta completa esperada
+                if (strlen($response) >= $expectedLength) {
+                    $this->debug("Respuesta completa recibida: " . trim($response)); // Debug
+                    $actualResponse = substr($response, 0, $expectedLength);
+                    if ($actualResponse === $expected) {
+                        // Devolver solo la respuesta esperada
+                        return $actualResponse;
+                    }
+
+                    // Si no coincide, seguir esperando (puede ser un mensaje más largo)
+                }
+            }
+
+            // Pequeña pausa para evitar uso intensivo de CPU
+            Coroutine::sleep(0.01); // 10ms
+        }
+    }
+    private function x_waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
+    {
+        $startTime = microtime(true);
+        $response = '';
+        $this->debug("Esperando respuesta del servidor..."); // Debug
+
+        while (true) {
+            // Verificar timeout
+            if ((microtime(true) - $startTime) > $timeout) {
+                $this->debug("Timeout esperando respuesta del servidor"); // Debug
                 throw new RuntimeException("Timeout esperando respuesta del servidor");
             }
 
@@ -232,9 +269,10 @@ class ConversionClient
 
             if ($data !== '') {
                 $response .= $data;
-                $this->debug("[Info] Respuesta del servidor: " . trim($data));
+                $this->debug("Respuesta del servidor: " . trim($data));
                 // Verificar si tenemos la respuesta completa
-                if (strpos($response, "\n") !== false) {
+                if (str_contains($response, "\n")) {
+                    $this->debug("Respuesta completa recibida: " . trim($response)); // Debug
                     // Extraer solo la línea completa
                     $lines = explode("\n", $response, 2);
                     $completeLine = $lines[0] . "\n";
