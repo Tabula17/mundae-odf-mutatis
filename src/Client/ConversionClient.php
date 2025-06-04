@@ -153,6 +153,7 @@ class ConversionClient
     {
         $file = fopen($filePath, 'rb');
         if ($file === false) {
+            $this->error("[Error] No se pudo abrir el archivo: $filePath"); // Debug
             throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
@@ -160,6 +161,7 @@ class ConversionClient
         $ready = $this->waitForResponse($socket, "READY\n");
         if ($ready !== "READY\n") {
             fclose($file);
+            $this->error("[Error] Respuesta inesperada del servidor: " . ($ready ?: "empty response")); // Debug
             throw new RuntimeException("Protocol error: Expected READY, got " . ($ready ?: "empty response"));
         }
 
@@ -243,6 +245,7 @@ class ConversionClient
                     return $completeLine;
                 }
             }
+
 
             // Pequeña pausa para evitar uso intensivo de CPU
             usleep(10000); // 10ms

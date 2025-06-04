@@ -214,7 +214,7 @@ class ConversionServer
             $this->logger?->debug("Datos recibidos de fd {$fd}: " . var_export(strlen($data), true) . " bytes");
             // Si es una subida en curso
             if (isset($this->uploadFiles[$fd])) {
-                $this->logger?->debug("Procesando chunk de subida para fd {$fd}");
+                $this->logger?->debug("Procesando chunk de subida para fd {$fd} -> {$this->uploadFiles[$fd]}");
                 $this->processUploadChunk($fd, $data);
             } else {
                 $this->logger?->debug("Procesando solicitud entrante para fd {$fd}");
@@ -269,7 +269,7 @@ class ConversionServer
         }
     }
 
-    private function handleChunkedUpload_(int $fd, array $metadata): void
+    private function NOhandleChunkedUpload_(int $fd, array $metadata): void
     {
         $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
         $fileSize = 0;
@@ -375,8 +375,6 @@ class ConversionServer
         // Enviar confirmación de ready
         $this->server->send($fd, "READY\n");
     }
-
-
     private function processUploadChunk(int $fd, string $data): void {
         try {
             $this->uploadBuffers[$fd] .= $data;
@@ -416,7 +414,6 @@ class ConversionServer
             $this->cleanupUpload($fd);
         }
     }
-
     private function finalizeUpload(int $fd, array $metadata): void {
         if (!isset($this->uploadFiles[$fd])) {
             throw new RuntimeException("No active upload for this connection");
@@ -446,7 +443,6 @@ class ConversionServer
 
         $this->cleanupUpload($fd);
     }
-
     private function cleanupUpload(int $fd): void {
         if (isset($this->uploadFiles[$fd]) && file_exists($this->uploadFiles[$fd])) {
             @unlink($this->uploadFiles[$fd]);
@@ -492,6 +488,7 @@ class ConversionServer
     {
         try {
             if (isset($request['action']) && $request['action'] === 'start_upload') {
+                $this->logger?->debug("Handling {$request['action']} chunked upload for fd {$fd}");
                 $this->handleChunkedUpload($fd, $request);
                 return;
             }
