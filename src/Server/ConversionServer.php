@@ -314,6 +314,10 @@ class ConversionServer
 
                     if ($chunkData['action'] === 'chunk') {
                         $chunk = base64_decode($chunkData['data']);
+                        if ($chunk === false) {
+                            throw new RuntimeException("Invalid base64 data");
+                        }
+
                         file_put_contents($tempFile, $chunk, FILE_APPEND);
                         $fileSize += $chunkData['size'];
                         $socket->send("ACK\n");
@@ -346,7 +350,6 @@ class ConversionServer
             if (file_exists($tempFile)) {
                 unlink($tempFile);
             }
-            $socket->close();
         }
     }
 
