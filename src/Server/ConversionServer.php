@@ -211,7 +211,12 @@ class ConversionServer
         });
 
         $this->server->on('receive', function (Server $server, int $fd, int $reactorId, string $data) {
-            $this->handleIncomingRequest($server, $fd, $data);
+            // Si es una subida en curso
+            if (isset($this->uploadFiles[$fd])) {
+                $this->processUploadChunk($fd, $data);
+            } else {
+                $this->handleIncomingRequest($server, $fd, $data);
+            }
         });
 
         $this->server->on('task', function (Server $server, int $taskId, int $workerId, array $data) {
@@ -224,6 +229,7 @@ class ConversionServer
 
         $this->server->on('close', function (Server $server, int $fd) {
             $this->logger?->debug("Cliente desconectado", ['fd' => $fd]);
+            $this->cleanupUpload($fd);
         });
         $this->server->on('shutdown', function (Server $server) {
             $this->logger?->info("Servidor detenido");
@@ -260,7 +266,7 @@ class ConversionServer
         }
     }
 
-    private function handleChunkedUpload(int $fd, array $metadata): void
+    private function handleChunkedUpload_(int $fd, array $metadata): void
     {
         $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
         $fileSize = 0;
@@ -281,7 +287,7 @@ class ConversionServer
         $buffer = '';
         try {
             while (true) {
-                $data = $socket->recv(1.0);
+                $data = $socket->recv(8192); // Leer hasta 8KB
                 if ($data === false) {
                     $this->logger?->error("Error receiving data: {$socket->errMsg}");
                     throw new RuntimeException("Error receiving data: {$socket->errMsg}");
@@ -352,7 +358,102 @@ class ConversionServer
             }
         }
     }
+    private array $uploadBuffers = [];
+    private array $uploadFiles = [];
+    private array $uploadSizes = [];
 
+    private function handleChunkedUpload(int $fd, array $metadata): void {
+        $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
+        $this->uploadFiles[$fd] = $tempFile;
+        $this->uploadSizes[$fd] = 0;
+        $this->uploadBuffers[$fd] = '';
+
+        // Enviar confirmación de ready
+        $this->server->send($fd, "READY\n");
+    }
+
+
+    private function processUploadChunk(int $fd, string $data): void {
+        try {
+            $this->uploadBuffers[$fd] .= $data;
+
+            while (($pos = strpos($this->uploadBuffers[$fd], "\n")) !== false) {
+                $message = substr($this->uploadBuffers[$fd], 0, $pos);
+                $this->uploadBuffers[$fd] = substr($this->uploadBuffers[$fd], $pos + 1);
+
+                $chunkData = json_decode($message, true);
+
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new RuntimeException("Invalid JSON chunk");
+                }
+
+                switch ($chunkData['action'] ?? '') {
+                    case 'end_upload':
+                        $this->finalizeUpload($fd, $chunkData);
+                        break;
+
+                    case 'chunk':
+                        $chunk = base64_decode($chunkData['data']);
+                        if ($chunk === false) {
+                            throw new RuntimeException("Invalid base64 data");
+                        }
+
+                        file_put_contents($this->uploadFiles[$fd], $chunk, FILE_APPEND);
+                        $this->uploadSizes[$fd] += $chunkData['size'];
+                        $this->server->send($fd, "ACK\n");
+                        break;
+
+                    default:
+                        throw new RuntimeException("Unknown action");
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->sendError($fd, "Upload failed: " . $e->getMessage());
+            $this->cleanupUpload($fd);
+        }
+    }
+
+    private function finalizeUpload(int $fd, array $metadata): void {
+        if (!isset($this->uploadFiles[$fd])) {
+            throw new RuntimeException("No active upload for this connection");
+        }
+
+        // Verificar tamaño del archivo
+        if (isset($metadata['file_size']) && $this->uploadSizes[$fd] != $metadata['file_size']) {
+            throw new RuntimeException(sprintf(
+                "File size mismatch (expected: %d, received: %d)",
+                $metadata['file_size'],
+                $this->uploadSizes[$fd]
+            ));
+        }
+
+        // Procesar el archivo
+        $request = [
+            'file_path' => $this->uploadFiles[$fd],
+            'file_content' => null,
+            'output_format' => $metadata['output_format'] ?? 'pdf',
+            'output_path' => $metadata['output_path'] ?? null,
+            'mode' => $metadata['mode'] ?? 'stream',
+            'async' => $metadata['async'] ?? false,
+            'queue' => $metadata['queue'] ?? false
+        ];
+        // Procesar el archivo completo
+        $this->processDecodedRequest($fd, $request);
+
+        $this->cleanupUpload($fd);
+    }
+
+    private function cleanupUpload(int $fd): void {
+        if (isset($this->uploadFiles[$fd]) && file_exists($this->uploadFiles[$fd])) {
+            @unlink($this->uploadFiles[$fd]);
+        }
+
+        unset(
+            $this->uploadFiles[$fd],
+            $this->uploadSizes[$fd],
+            $this->uploadBuffers[$fd]
+        );
+    }
     /**
      * Procesa una solicitud de conversión
      *
@@ -374,20 +475,7 @@ class ConversionServer
                 $this->sendError($fd, "JSON inválido");
                 return;
             }
-
-            if (isset($request['action']) && $request['action'] === 'start_upload') {
-                $this->handleChunkedUpload($fd, $request);
-                return;
-            }
-
-
-            $this->logger?->debug("Received request: " . $request['action'] === 'chunk' ? ' Receiving chunk' : json_encode($request));
-            if ($this->shouldProcessAsync($request)) {
-                $this->processAsync($fd, $request);
-            } else {
-                $this->logger?->debug("Processing request synchronously\n");
-                $this->processSync($fd, $request);
-            }
+            $this->processDecodedRequest($fd, $request);
         } catch (\JsonException $e) {
             $this->logger?->error("Error processing request: " . var_export(strlen($data), true) . " bytes\n{$e->getTraceAsString()}");
             $this->sendError($fd, "Invalid JSON: " . $e->getMessage());
@@ -396,7 +484,27 @@ class ConversionServer
             $this->sendError($fd, "Server error: " . $e->getMessage());
         }
     }
+    private function processDecodedRequest(int $fd, array $request): void
+    {
+        try {
+            if (isset($request['action']) && $request['action'] === 'start_upload') {
+                $this->handleChunkedUpload($fd, $request);
+                return;
+            }
 
+            $this->logger?->debug("Received request: " . $request['action'] === 'chunk' ? ' Receiving chunk' : json_encode($request));
+            if ($this->shouldProcessAsync($request)) {
+                $this->processAsync($fd, $request);
+            } else {
+                $this->logger?->debug("Processing request synchronously\n");
+                $this->processSync($fd, $request);
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->error("Server error: " . $e->getMessage() . " bytes\n{$e->getTraceAsString()}");
+            $this->sendError($fd, "Server error: " . $e->getMessage());
+        }
+
+    }
     /**
      * Determina si la solicitud debe procesarse de forma asíncrona
      *

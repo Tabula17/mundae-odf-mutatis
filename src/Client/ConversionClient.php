@@ -104,63 +104,66 @@ class ConversionClient
             $this->error("Error al conectar al host {$this->host}: {$socket->errMsg} (Código: {$socket->errCode})"); // Debug
             throw new RuntimeException("Connection failed: {$socket->errMsg} (Code: {$socket->errCode})");
         }
-        // Enviar metadata inicial
-        $metadata = [
-            'action' => 'start_upload',
-            'output_format' => $outputFormat,
-            'output_path' => $outputPath,
-            'async' => $async,
-            'queue' => $useQueue,
-            'mode' => $mode,
-            'chunk_size' => $chunkSize
-        ];
-        if ($filePath !== null) {
-            $metadata['file_name'] = basename($filePath);
-            $metadata['file_size'] = filesize($filePath);
-        }
-        if (!$socket->send(json_encode($metadata))) {
-            $this->error("[Error] Enviando metadata: " . $socket->errMsg); // Debug
-            throw new RuntimeException("Error al enviar metadata: {$socket->errMsg}");
-        }
-        // Procesar el contenido del archivo
-        if ($fileContent !== null) {
-            // Si nos dan el contenido directamente
-            $this->sendContentInChunks($socket, $fileContent, $chunkSize);
-        } else {
-            // Si nos dan una ruta de archivo
-            $this->sendFileInChunks($socket, $filePath, $chunkSize);
-        }
+        try {
+            // Enviar metadata inicial
+            $metadata = [
+                'action' => 'start_upload',
+                'output_format' => $outputFormat,
+                'output_path' => $outputPath,
+                'async' => $async,
+                'queue' => $useQueue,
+                'mode' => $mode,
+                'chunk_size' => $chunkSize
+            ];
+            if ($filePath !== null) {
+                $metadata['file_name'] = basename($filePath);
+                $metadata['file_size'] = filesize($filePath);
+            }
+            if (!$socket->send(json_encode($metadata))) {
+                $this->error("[Error] Enviando metadata: " . $socket->errMsg); // Debug
+                throw new RuntimeException("Error al enviar metadata: {$socket->errMsg}");
+            }
+            // Procesar el contenido del archivo
+            if ($fileContent !== null) {
+                // Si nos dan el contenido directamente
+                $this->sendContentInChunks($socket, $fileContent, $chunkSize);
+            } else {
+                // Si nos dan una ruta de archivo
+                $this->sendFileInChunks($socket, $filePath, $chunkSize);
+            }
 
-        // Indicar fin de transmisión
-        $socket->send(json_encode(['action' => 'end_upload']));
-        // Recibir respuesta
-        $response = '';
-        while (true) {
-            $data = $socket->recv();
-            if ($data === false || $data === '') break;
-            $response .= $data;
+            // Indicar fin de transmisión
+            $socket->send(json_encode(['action' => 'end_upload']));
+            $response = $this->waitForResponse($socket, "\n", $this->timeout);
+            //return json_decode($response, true);
+
+            $decoded = json_decode($response, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
+                throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
+            }
+
+            return $decoded;
+        } finally {
+            $socket->close();
         }
-
-        $socket->close();
-
-        $decoded = json_decode($response, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
-            throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
-        }
-
-        return $decoded;
     }
-
 
     private function sendFileInChunks(Client $socket, string $filePath, int $chunkSize): void
     {
         $file = fopen($filePath, 'rb');
         if ($file === false) {
-            $this->error("[Error] No se pudo abrir el archivo: $filePath"); // Debug
             throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
+        // 1. Esperar READY del servidor
+        $ready = $this->waitForResponse($socket, "READY\n");
+        if ($ready !== "READY\n") {
+            fclose($file);
+            throw new RuntimeException("Protocol error: Expected READY, got " . ($ready ?: "empty response"));
+        }
+
+        // 2. Enviar chunks y esperar ACK
         while (!feof($file)) {
             $chunk = fread($file, $chunkSize);
             $this->sendChunk($socket, $chunk);
@@ -171,6 +174,13 @@ class ConversionClient
 
     private function sendContentInChunks(Client $socket, string $content, int $chunkSize): void
     {
+        // 1. Esperar READY del servidor
+        $ready = $this->waitForResponse($socket, "READY\n");
+        if ($ready !== "READY\n") {
+            throw new RuntimeException("Protocol error: Expected READY, got " . ($ready ?: "empty response"));
+        }
+
+        // 2. Enviar chunks y esperar ACK
         $length = strlen($content);
         for ($offset = 0; $offset < $length; $offset += $chunkSize) {
             $chunk = substr($content, $offset, $chunkSize);
@@ -180,23 +190,58 @@ class ConversionClient
 
     private function sendChunk(Client $socket, string $chunk): void
     {
-        $payload = [
-            'action' => 'chunk',
-            'data' => base64_encode($chunk),
-            'size' => strlen($chunk)
-        ];
+        $payload = json_encode([
+                'action' => 'chunk',
+                'data' => base64_encode($chunk),
+                'size' => strlen($chunk)
+            ]) . "\n";  // Asegurar terminación con \n
 
-        if (!$socket->send(json_encode($payload))) {
-            $this->error("[Error] Enviando chunk: " . $socket->errMsg); // Debug
+        if (!$socket->send($payload)) {
             throw new RuntimeException("Error al enviar chunk: {$socket->errMsg}");
         }
 
-        // Opcional: esperar confirmación del servidor
-        $ack = $socket->recv();
-        $this->debug("[ACK] Recibido: " . $ack); // Debug
-        if ($ack !== 'ACK') {
-            $this->error("[Error] Confirmación de chunk fallida: " . $ack); // Debug
+        // Esperar ACK con timeout
+        $ack = $this->waitForResponse($socket, "ACK\n");
+        if ($ack !== "ACK\n") {
             throw new RuntimeException("Error en confirmación del chunk");
+        }
+    }
+
+    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
+    {
+        $startTime = microtime(true);
+        $response = '';
+
+        while (true) {
+            // Verificar timeout
+            if ((microtime(true) - $startTime) > $timeout) {
+                throw new RuntimeException("Timeout esperando respuesta del servidor");
+            }
+
+            $data = $socket->recv(1.0); // Timeout corto para no bloquear indefinidamente
+
+            if ($data === false) {
+                throw new RuntimeException("Error de conexión: {$socket->errMsg}");
+            }
+
+            if ($data !== '') {
+                $response .= $data;
+
+                // Verificar si tenemos la respuesta completa
+                if (strpos($response, "\n") !== false) {
+                    // Extraer solo la línea completa
+                    $lines = explode("\n", $response, 2);
+                    $completeLine = $lines[0] . "\n";
+
+                    // Guardar el resto para la próxima lectura
+                    $response = $lines[1] ?? '';
+
+                    return $completeLine;
+                }
+            }
+
+            // Pequeña pausa para evitar uso intensivo de CPU
+            usleep(10000); // 10ms
         }
     }
 
