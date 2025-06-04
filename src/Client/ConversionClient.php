@@ -112,7 +112,7 @@ class ConversionClient
             $metadata['file_size'] = filesize($filePath);
         }
         if (!$socket->send(json_encode($metadata))) {
-            throw new \RuntimeException("Error al enviar metadata: {$socket->errMsg}");
+            throw new RuntimeException("Error al enviar metadata: {$socket->errMsg}");
         }
         // Procesar el contenido del archivo
         if ($fileContent !== null) {
@@ -137,7 +137,7 @@ class ConversionClient
 
         $decoded = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException("Respuesta inválida: " . json_last_error_msg());
+            throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
         }
 
         return $decoded;
@@ -148,7 +148,7 @@ class ConversionClient
     {
         $file = fopen($filePath, 'rb');
         if ($file === false) {
-            throw new \RuntimeException("No se pudo abrir el archivo: $filePath");
+            throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
         while (!feof($file)) {
@@ -177,13 +177,14 @@ class ConversionClient
         ];
 
         if (!$socket->send(json_encode($payload))) {
-            throw new \RuntimeException("Error al enviar chunk: {$socket->errMsg}");
+            throw new RuntimeException("Error al enviar chunk: {$socket->errMsg}");
         }
 
         // Opcional: esperar confirmación del servidor
         $ack = $socket->recv();
+        echo "[ACK] Recibido: " . $ack . PHP_EOL; // Debug
         if ($ack !== 'ACK') {
-            throw new \RuntimeException("Error en confirmación del chunk");
+            throw new RuntimeException("Error en confirmación del chunk");
         }
     }
 
