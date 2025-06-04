@@ -5,12 +5,13 @@ namespace Tabula17\Mundae\Odf\Mutatis\Worker;
 use Swoole\Process;
 use Tabula17\Satelles\Odf\Adiutor\Unoserver\ServerHealthMonitor;
 use Tabula17\Satelles\Odf\Adiutor\Unoserver\UnoserverLoadBalancer;
+use Tabula17\Satelles\Utilis\Console\VerboseTrait;
 use Tabula17\Satelles\Utilis\Queue\QueueInterface;
 use Tabula17\Satelles\Utilis\Queue\RedisQueue;
 
 /**
  * Worker para procesamiento asíncrono de conversiones
- * 
+ *
  * Procesa las tareas de conversión en segundo plano, consumiendo
  * solicitudes desde una cola de Redis y ejecutando las conversiones
  * utilizando instancias unoserver balanceadas.
@@ -20,6 +21,8 @@ use Tabula17\Satelles\Utilis\Queue\RedisQueue;
  */
 class ConversionWorker
 {
+    use VerboseTrait;
+
     /**
      * @var UnoserverLoadBalancer Gestor de balanceo de carga
      */
@@ -58,7 +61,7 @@ class ConversionWorker
      * @param int $concurrency Número máximo de conversiones simultáneas
      * @param int $timeout Tiempo límite para conversiones en segundos
      */
-    public function __construct(QueueInterface $queue, ServerHealthMonitor $healthMonitor, int $concurrency = 4, int $timeout = 10)
+    public function __construct(QueueInterface $queue, ServerHealthMonitor $healthMonitor, int $concurrency = 4, int $timeout = 10, private int $verbose = 4)
     {
         $this->queue = $queue;
         $this->timeout = $timeout;
@@ -76,16 +79,16 @@ class ConversionWorker
         // Manejar señales para shutdown graceful
         Process::signal(SIGTERM, function () {
             $this->shouldStop = true;
-            echo "Recibida señal de terminación, finalizando worker...\n";
+            $this->notice( "Recibida señal de terminación, finalizando worker...");
         });
 
-        echo "Worker iniciado. Esperando tareas...\n";
+        $this->notice( "Worker iniciado. Esperando tareas...");
 
         while (!$this->shouldStop) {
             $this->processNextTask();
         }
         $this->healthMonitor->startMonitoring();
-        echo "Worker detenido correctamente\n";
+        $this->notice( "Worker detenido correctamente");
     }
 
     /**
@@ -106,7 +109,7 @@ class ConversionWorker
         $this->initializeConverter();
 
         try {
-            echo "Procesando tarea ID: {$task['task_id']}\n";
+            $this->debug( "Procesando tarea ID: {$task['task_id']}");
 
             $result = $this->converter->convertSync(
                 $task['file_path'],
@@ -122,6 +125,7 @@ class ConversionWorker
                 'completed_at' => time()
             ]);
         } catch (\Throwable $e) {
+            $this->error( "Error procesando tarea ID: {$task['task_id']}: " . $e->getMessage());
             $this->storeResult($task['task_id'], [
                 'status' => 'failed',
                 'error' => $e->getMessage(),
@@ -178,7 +182,7 @@ class ConversionWorker
         if (isset($this->converter)) {
             $this->converter->stop();
         }
-        echo "Worker detenido correctamente\n";
+        $this->notice( "Worker detenido correctamente");
     }
 
     /**
@@ -189,6 +193,12 @@ class ConversionWorker
     public function getHealthMonitor(): ServerHealthMonitor
     {
         return $this->healthMonitor;
+    }
+
+    private function isVerbose(int $level): bool
+    {
+        $this->verboseIcon = '🗺️';
+        return $level >= $this->verbose;
     }
 }
 // Ejecutar worker

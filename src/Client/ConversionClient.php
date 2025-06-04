@@ -5,13 +5,17 @@ namespace Tabula17\Mundae\Odf\Mutatis\Client;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Client;
 use Swoole\Coroutine\System;
+use Tabula17\Mundae\Odf\Mutatis\Exception\InvalidArgumentException;
 use Tabula17\Mundae\Odf\Mutatis\Exception\RuntimeException;
+use Tabula17\Satelles\Utilis\Console\VerboseTrait;
 
 /**
  * Cliente para el servicio de conversión de documentos ODF con soporte mTLS
  */
 class ConversionClient
 {
+    use VerboseTrait;
+
     private string $host;
     private int $port;
     private ?string $sslCertFile;
@@ -37,7 +41,8 @@ class ConversionClient
         ?string       $sslCaFile = null,
         bool          $sslVerifyPeer = true,
         private int   $chunkSize = 8192, // Tamaño de chunk para lectura de archivos
-        private float $timeout = 5 // Timeout para conexiones
+        private float $timeout = 5, // Timeout para conexiones
+        private int   $verbose = 4 // Nivel de verbosidad para debug
     )
     {
         $this->host = $host;
@@ -76,7 +81,8 @@ class ConversionClient
     {
         // Validación básica
         if ($filePath === null && $fileContent === null) {
-            throw new \InvalidArgumentException("Debe proveer filePath o fileContent");
+            $this->error("Debe proveer filePath o fileContent");
+            throw new InvalidArgumentException("Debe proveer filePath o fileContent");
         }
         $socket = new Client(SWOOLE_SOCK_TCP);
         $socket->set([
@@ -95,6 +101,7 @@ class ConversionClient
             ]);
         }
         if (!$socket->connect($this->host, $this->port, 5)) {
+            $this->error("Error al conectar al host {$this->host}: {$socket->errMsg} (Código: {$socket->errCode})"); // Debug
             throw new RuntimeException("Connection failed: {$socket->errMsg} (Code: {$socket->errCode})");
         }
         // Enviar metadata inicial
@@ -112,6 +119,7 @@ class ConversionClient
             $metadata['file_size'] = filesize($filePath);
         }
         if (!$socket->send(json_encode($metadata))) {
+            $this->error("[Error] Enviando metadata: " . $socket->errMsg); // Debug
             throw new RuntimeException("Error al enviar metadata: {$socket->errMsg}");
         }
         // Procesar el contenido del archivo
@@ -137,6 +145,7 @@ class ConversionClient
 
         $decoded = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
+            $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
             throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
         }
 
@@ -148,6 +157,7 @@ class ConversionClient
     {
         $file = fopen($filePath, 'rb');
         if ($file === false) {
+            $this->error("[Error] No se pudo abrir el archivo: $filePath"); // Debug
             throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
@@ -177,13 +187,15 @@ class ConversionClient
         ];
 
         if (!$socket->send(json_encode($payload))) {
+            $this->error("[Error] Enviando chunk: " . $socket->errMsg); // Debug
             throw new RuntimeException("Error al enviar chunk: {$socket->errMsg}");
         }
 
         // Opcional: esperar confirmación del servidor
         $ack = $socket->recv();
-        echo "[ACK] Recibido: " . $ack . PHP_EOL; // Debug
+        $this->debug("[ACK] Recibido: " . $ack); // Debug
         if ($ack !== 'ACK') {
+            $this->error("[Error] Confirmación de chunk fallida: " . $ack); // Debug
             throw new RuntimeException("Error en confirmación del chunk");
         }
     }
@@ -209,6 +221,7 @@ class ConversionClient
 
                 $callback($result);
             } catch (\Throwable $e) {
+                $this->error("[Error] Al convertir (async): " . $e->getMessage()); // Debug
                 $callback([
                     'status' => 'error',
                     'message' => $e->getMessage()
@@ -236,7 +249,14 @@ class ConversionClient
 
             return $socket->connect($this->host, $this->port, 2);
         } catch (\Throwable $e) {
+            $this->error("Error al conectar al host {$this->host}: " . $e->getMessage()); // Debug
             return false;
         }
+    }
+
+    private function isVerbose(int $level): bool
+    {
+        $this->verboseIcon = '🌏';
+        return $level >= $this->verbose;
     }
 }
