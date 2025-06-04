@@ -203,13 +203,18 @@ class ConversionClient
         // Esperar ACK con timeout
         $this->waitForResponse($socket, "ACK\n", $this->timeout);
     }
-    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string {
+
+    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
+    {
         $startTime = microtime(true);
         $response = '';
         $expectedLength = strlen($expected);
-        $this->debug("Esperando respuesta del servidor ({$expected})..."); // Debug
 
         while (true) {
+            $this->debug("Esperando respuesta...", [
+                'expected' => trim($expected),
+                'time_elapsed' => microtime(true) - $startTime
+            ]);
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
                 $this->debug("Timeout esperando respuesta del servidor ({$expected})"); // Debug
@@ -217,7 +222,11 @@ class ConversionClient
             }
 
             $data = $socket->recv(1.0); // Timeout corto para chequeos
-
+            $this->debug("Datos recibidos", [
+                'data' => $data,
+                'errCode' => $socket->errCode ?? null,
+                'errMsg' => $socket->errMsg ?? null
+            ]);
             if ($data === false) {
                 // Manejar diferentes códigos de error
                 if ($socket->errCode === SOCKET_ETIMEDOUT) {
@@ -247,6 +256,7 @@ class ConversionClient
             Coroutine::sleep(0.01); // 10ms
         }
     }
+
     private function x_waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
     {
         $startTime = microtime(true);
