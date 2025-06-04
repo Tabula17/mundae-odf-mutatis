@@ -264,18 +264,17 @@ class ConversionServer
     {
         $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
         $fileSize = 0;
-        $clientInfo = $this->server->getClientInfo($fd);
-        // Usar Coroutine\Socket para manejar la conexión específica
-        $socket = new Socket(
-            $clientInfo['socket_type'] === SWOOLE_SOCK_TCP6 ? AF_INET6 : AF_INET,
-            SOCK_STREAM,
-            0
-        );
-        // Tomar control de la conexión existente
-        if (!$socket::import($fd)) {
+        // Crear un nuevo socket para comunicarse con el cliente
+        $socket = new Socket(AF_INET, SOCK_STREAM, 0);
+        // Obtener el socket del cliente como recurso
+        $clientSocket = $this->server->getSocket($fd);
+        if (!$clientSocket || !$socket::import($clientSocket)) {
             $this->sendError($fd, "Failed to import socket");
             return;
         }
+        // Configurar timeout
+        $socket->setOption(SOL_SOCKET, SO_RCVTIMEO, ['sec' => 5, 'usec' => 0]);
+        $socket->setOption(SOL_SOCKET, SO_SNDTIMEO, ['sec' => 5, 'usec' => 0]);
         // Enviar confirmación de ready
         $socket->send("READY\n");
         // Buffer para datos no completos
