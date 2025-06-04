@@ -197,12 +197,14 @@ class ConversionClient
             ]) . "\n";  // Asegurar terminación con \n
 
         if (!$socket->send($payload)) {
+            $this->debug('[Error] Enviando chunk: ' . $socket->errMsg); // Debug
             throw new RuntimeException("Error al enviar chunk: {$socket->errMsg}");
         }
 
         // Esperar ACK con timeout
         $ack = $this->waitForResponse($socket, "ACK\n");
         if ($ack !== "ACK\n") {
+            $this->debug("[Error] Confirmación de chunk inválida: " . ($ack ?: "empty response")); // Debug
             throw new RuntimeException("Error en confirmación del chunk");
         }
     }
@@ -215,18 +217,20 @@ class ConversionClient
         while (true) {
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
+                $this->debug("[Error] Timeout esperando respuesta del servidor"); // Debug
                 throw new RuntimeException("Timeout esperando respuesta del servidor");
             }
 
             $data = $socket->recv(1.0); // Timeout corto para no bloquear indefinidamente
 
             if ($data === false) {
+                $this->debug("[Error] Error al recibir datos: " . $socket->errMsg); // Debug
                 throw new RuntimeException("Error de conexión: {$socket->errMsg}");
             }
 
             if ($data !== '') {
                 $response .= $data;
-
+                $this->debug("[Info] Respuesta del servidor: {$data}");
                 // Verificar si tenemos la respuesta completa
                 if (strpos($response, "\n") !== false) {
                     // Extraer solo la línea completa

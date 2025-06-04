@@ -211,10 +211,13 @@ class ConversionServer
         });
 
         $this->server->on('receive', function (Server $server, int $fd, int $reactorId, string $data) {
+            $this->logger?->debug("Datos recibidos de fd {$fd}: " . var_export(strlen($data), true) . " bytes");
             // Si es una subida en curso
             if (isset($this->uploadFiles[$fd])) {
+                $this->logger?->debug("Procesando chunk de subida para fd {$fd}");
                 $this->processUploadChunk($fd, $data);
             } else {
+                $this->logger?->debug("Procesando solicitud entrante para fd {$fd}");
                 $this->handleIncomingRequest($server, $fd, $data);
             }
         });
@@ -367,6 +370,7 @@ class ConversionServer
         $this->uploadFiles[$fd] = $tempFile;
         $this->uploadSizes[$fd] = 0;
         $this->uploadBuffers[$fd] = '';
+        $this->logger?->debug("Handling chunked upload for fd {$fd}, temp file: {$tempFile}");
 
         // Enviar confirmación de ready
         $this->server->send($fd, "READY\n");
