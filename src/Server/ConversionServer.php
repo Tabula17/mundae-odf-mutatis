@@ -2,6 +2,7 @@
 
 namespace Tabula17\Mundae\Odf\Mutatis\Server;
 
+use Swoole\Coroutine\Socket;
 use Swoole\Server;
 use Tabula17\Mundae\Odf\Mutatis\Exception\InvalidArgumentException;
 use Tabula17\Mundae\Odf\Mutatis\Exception\RuntimeException;
@@ -23,7 +24,6 @@ use Psr\Log\LoggerInterface;
  */
 class ConversionServer
 {
-    use VerboseTrait;
 
     /**
      * @var Server Instancia del servidor Swoole
@@ -72,8 +72,7 @@ class ConversionServer
         private readonly ?LoggerInterface       $logger = null,
         private readonly ?TCPmTLSAuthMiddleware $mtlsMiddleware = null,
         private readonly ?array                 $sslSettings = null,
-        private readonly ?int                   $timeout = 10,
-        private readonly int                    $verbose = 4
+        private readonly ?int                   $timeout = 10
     )
     {
         $this->queueEnabled = $queue !== null;
@@ -107,14 +106,16 @@ class ConversionServer
      * Inicia el servidor de conversión
      *
      * @return void
-     * @throws RuntimeException Si el servidor ya está en ejecución
      */
     public function start(): void
     {
         if ($this->isRunning) {
-            throw new RuntimeException("Server is already running");
+            //throw new RuntimeException("Server is already running");
+            $this->logger?->warning('Server is already running.');
+            trigger_error("Server is already running", E_USER_WARNING);
+            return;
         }
-
+        $this->logger?->info("Starting Conversion Server on {$this->host}:{$this->port}");
         $this->initializeComponents();
         $this->createServer();
         $this->registerCallbacks();
@@ -229,9 +230,6 @@ class ConversionServer
             $this->healthMonitor->stopMonitoring();
             $this->converter->stop();
         });
-        $this->server->on('error', function (Server $server, int $code, string $message) {
-            $this->logger?->error("Error del servidor: {$message} (Código: {$code})");
-        });
         $this->server->on('pipeMessage', function (Server $server, int $fromWorkerId, string $message) {
             $this->logger?->debug("Mensaje de pipe recibido", [
                 'fromWorkerId' => $fromWorkerId,
@@ -266,44 +264,91 @@ class ConversionServer
     {
         $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
         $fileSize = 0;
-
-        $this->server->send($fd, 'READY');
-        while (true) {
-            $data = $this->server->recv();
-            $this->debug("Received chunk data: " . var_export(strlen($data), true));
-            $chunkData = json_decode($data, true);
-
-            if ($chunkData['action'] === 'end_upload') {
-                break;
-            }
-
-            if ($chunkData['action'] === 'chunk') {
-                $chunk = base64_decode($chunkData['data']);
-                file_put_contents($tempFile, $chunk, FILE_APPEND);
-                $fileSize += strlen($chunk);
-                $this->server->send($fd, 'ACK');
-            }
-        }
-
-        // Verificar integridad
-        if ($metadata['file_size'] !== null && $fileSize != $metadata['file_size']) {
-            unlink($tempFile);
-            $this->sendError($fd, "Tamaño de archivo no coincide");
+        $clientInfo = $this->server->getClientInfo($fd);
+        // Usar Coroutine\Socket para manejar la conexión específica
+        $socket = new Socket(
+            $clientInfo['socket_type'] === SWOOLE_SOCK_TCP6 ? AF_INET6 : AF_INET,
+            SOCK_STREAM,
+            0
+        );
+        // Tomar control de la conexión existente
+        if (!$socket::import($fd)) {
+            $this->sendError($fd, "Failed to import socket");
             return;
         }
-        $this->debug("Received file: {$tempFile} ({$fileSize} bytes)");
+        // Enviar confirmación de ready
+        $socket->send("READY\n");
+        // Buffer para datos no completos
+        $buffer = '';
+        try {
+            while (true) {
+                $data = $socket->recv(1.0);
+                if ($data === false) {
+                    $this->logger?->error("Error receiving data: {$socket->errMsg}");
+                    throw new RuntimeException("Error receiving data: {$socket->errMsg}");
+                }
+                if ($data === '') {
+                    // Conexión cerrada por cliente
+                    $this->logger?->debug("Empty buffer: connection closed by client");
+                    break;
+                }
+                $buffer .= $data;
 
-        $request = [
-            'file_path' => $tempFile,
-            'file_content' => null,
-            'output_format' => $metadata['output_format'] ?? 'pdf',
-            'output_path' => $metadata['output_path'] ?? null,
-            'mode' => $metadata['mode'] ?? 'stream',
-            'async' => $metadata['async'] ?? false,
-            'queue' => $metadata['queue'] ?? false
-        ];
-        // Procesar el archivo completo
-        $this->processRequest($fd, json_encode($request));
+                $this->logger?->debug("Received chunk data: " . var_export(strlen($data), true));
+                // Procesar mensajes completos (terminados en \n)
+                while (($pos = strpos($buffer, "\n")) !== false) {
+                    $message = substr($buffer, 0, $pos);
+                    $buffer = substr($buffer, $pos + 1);
+
+                    $chunkData = json_decode($message, true);
+                    $this->logger?->debug("Received chunk data: " . strlen($chunkData). " bytes");
+
+                    if (json_last_error() !== JSON_ERROR_NONE) {
+                        $this->logger?->error("Invalid JSON chunk: " . json_last_error_msg());
+                        throw new RuntimeException("Invalid JSON chunk");
+                    }
+
+                    if ($chunkData['action'] === 'end_upload') {
+                        $this->logger?->debug("End of upload received");
+                        break 2; // Salir de ambos bucles
+                    }
+
+                    if ($chunkData['action'] === 'chunk') {
+                        $chunk = base64_decode($chunkData['data']);
+                        file_put_contents($tempFile, $chunk, FILE_APPEND);
+                        $fileSize += $chunkData['size'];
+                        $socket->send("ACK\n");
+                    }
+                }
+            }
+            // Verificar integridad
+            if (isset($metadata['file_size']) && $fileSize != $metadata['file_size']) {
+                $this->logger?->error("File size mismatch: expected {$metadata['file_size']}, got $fileSize");
+                throw new RuntimeException("File size mismatch: expected {$metadata['file_size']}, got $fileSize");
+            }
+
+            $this->logger?->debug("Received file: {$tempFile} ({$fileSize} bytes)");
+            $request = [
+                'file_path' => $tempFile,
+                'file_content' => null,
+                'output_format' => $metadata['output_format'] ?? 'pdf',
+                'output_path' => $metadata['output_path'] ?? null,
+                'mode' => $metadata['mode'] ?? 'stream',
+                'async' => $metadata['async'] ?? false,
+                'queue' => $metadata['queue'] ?? false
+            ];
+            // Procesar el archivo completo
+            $this->processRequest($fd, json_encode($request));
+
+        } catch (\Throwable $e) {
+            $this->logger?->error("Error handling chunked upload: " . $e->getMessage());
+            $this->sendError($fd, $e->getMessage());
+        } finally {
+            if (file_exists($tempFile)) {
+                unlink($tempFile);
+            }
+            $socket->close();
+        }
     }
 
     /**
@@ -316,36 +361,36 @@ class ConversionServer
     private function processRequest(int $fd, string $data): void
     {
         try {
-            $request = json_decode($data, true, 512);
+            $request =  json_decode($data, true, 512, JSON_THROW_ON_ERROR);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 if (!str_contains($data, 'chunk')) {
-                    $this->error("Error processing: " . $data . "\n");
+                    $this->logger?->error("Error processing: " . $data . "\n");
                 } else {
-                    $this->error("Error processing chunked upload: " . var_export(strlen($data), true) . " bytes\n");
+                    $this->logger?->error("Error processing chunked upload: " . var_export(strlen($data), true) . " bytes\n");
                 }
-                $this->error("Error processing request: " . var_export(strlen($data), true) . " bytes\n");
+                $this->logger?->error("Error processing request: " . var_export(strlen($data), true) . " bytes\n");
                 $this->sendError($fd, "JSON inválido");
                 return;
             }
 
-            if ($request['action'] === 'start_upload') {
+            if (isset($request['action']) && $request['action'] === 'start_upload') {
                 $this->handleChunkedUpload($fd, $request);
                 return;
             }
 
 
-            $this->debug("Received request: " . $request['action'] === 'chunk' ? ' Receiving chunk' : json_encode($request));
+            $this->logger?->debug("Received request: " . $request['action'] === 'chunk' ? ' Receiving chunk' : json_encode($request));
             if ($this->shouldProcessAsync($request)) {
                 $this->processAsync($fd, $request);
             } else {
-                $this->debug("Processing request synchronously\n");
+                $this->logger?->debug("Processing request synchronously\n");
                 $this->processSync($fd, $request);
             }
         } catch (\JsonException $e) {
-            $this->error("Error processing request: " . var_export(strlen($data), true) . " bytes\n{$e->getTraceAsString()}");
+            $this->logger?->error("Error processing request: " . var_export(strlen($data), true) . " bytes\n{$e->getTraceAsString()}");
             $this->sendError($fd, "Invalid JSON: " . $e->getMessage());
         } catch (\Throwable $e) {
-            $this->error("Server error: " . $e->getMessage(). " bytes\n{$e->getTraceAsString()}");
+            $this->logger?->error("Server error: " . $e->getMessage() . " bytes\n{$e->getTraceAsString()}");
             $this->sendError($fd, "Server error: " . $e->getMessage());
         }
     }
@@ -374,7 +419,7 @@ class ConversionServer
             if (empty($request['file_path']) && empty($request['file_content'])) {
                 throw new InvalidArgumentException("Debe proporcionar 'file_path' o 'file_content'");
             }
-            $this->debug("Processing request synchronously in mode {$request['mode']}");
+            $this->logger?->debug("Processing request synchronously in mode {$request['mode']}");
             $result = $this->converter->convertSync(
                 filePath: $request['file_path'] ?? null,
                 fileContent: $request['file_content'] ?? null,
@@ -491,9 +536,4 @@ class ConversionServer
         return null;
     }
 
-    private function isVerbose(int $level): bool
-    {
-        $this->verboseIcon = '🌎';
-        return $level >= $this->verbose;
-    }
 }

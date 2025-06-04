@@ -61,7 +61,7 @@ class ConversionWorker
      * @param int $concurrency Número máximo de conversiones simultáneas
      * @param int $timeout Tiempo límite para conversiones en segundos
      */
-    public function __construct(QueueInterface $queue, ServerHealthMonitor $healthMonitor, int $concurrency = 4, int $timeout = 10, private int $verbose = 4)
+    public function __construct(QueueInterface $queue, ServerHealthMonitor $healthMonitor, int $concurrency = 4, int $timeout = 10, private readonly int $verbose = self::ERROR)
     {
         $this->queue = $queue;
         $this->timeout = $timeout;

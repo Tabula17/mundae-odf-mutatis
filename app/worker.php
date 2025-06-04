@@ -4,7 +4,7 @@ declare(strict_types=1);
 require __DIR__ . "/../vendor/autoload.php";
 
 // Ejecutar worker
-use Tabula17\Mundae\Odf\Mutatis\Server\ConversionServer;
+use Tabula17\Mundae\Odf\Mutatis\Server\NoConversionServer;
 use Tabula17\Mundae\Odf\Mutatis\Worker\ConversionWorker;
 use Tabula17\Satelles\Odf\Adiutor\Unoserver\ServerHealthMonitor;
 use Tabula17\Satelles\Utilis\Queue\RedisQueue;

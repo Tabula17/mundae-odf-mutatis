@@ -34,15 +34,15 @@ class ConversionClient
      * @param bool $sslVerifyPeer Verificar certificado del servidor
      */
     public function __construct(
-        string        $host = '127.0.0.1',
-        int           $port = 9501,
-        ?string       $sslCertFile = null,
-        ?string       $sslKeyFile = null,
-        ?string       $sslCaFile = null,
-        bool          $sslVerifyPeer = true,
-        private int   $chunkSize = 8192, // Tamaño de chunk para lectura de archivos
-        private float $timeout = 5, // Timeout para conexiones
-        private int   $verbose = 4 // Nivel de verbosidad para debug
+        string               $host = '127.0.0.1',
+        int                  $port = 9501,
+        ?string              $sslCertFile = null,
+        ?string              $sslKeyFile = null,
+        ?string              $sslCaFile = null,
+        bool                 $sslVerifyPeer = true,
+        private int          $chunkSize = 8192, // Tamaño de chunk para lectura de archivos
+        private float        $timeout = 5, // Timeout para conexiones
+        private readonly int $verbose = self::ERROR // Nivel de verbosidad para debug
     )
     {
         $this->host = $host;

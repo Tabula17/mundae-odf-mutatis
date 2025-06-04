@@ -4,6 +4,7 @@ declare(strict_types=1);
 require __DIR__ . "/../vendor/autoload.php";
 
 use Tabula17\Mundae\Odf\Mutatis\Server\ConversionServer;
+use Tabula17\Satelles\Utilis\Console\Log;
 
 $config = require __DIR__ . '/../config/config.php';
 if (!is_array($config) || !isset($config['server'])) {
@@ -31,6 +32,11 @@ if (array_key_exists('ssl', $config)) {
         $mtlsConfig = $config['ssl'];
     }
 }
+$logger = new Log(
+    verboseLevel: Log::DEBUG,
+    verboseContext: 'ConversionServer',
+    verboseIcon: '🌎'
+);
 
 // Iniciar servidor
 $server = new ConversionServer(
@@ -40,7 +46,8 @@ $server = new ConversionServer(
         servers: $config['unoserver_instances'],
         checkInterval: 30,
         failureThreshold: 3,
-        retryTimeout: 60
+        retryTimeout: 60,
+        logger: $logger
     ),
     workers: $config['server']['workers'],
     task_workers: $config['server']['task_workers'],
@@ -51,9 +58,11 @@ $server = new ConversionServer(
         channel: $config['queue']['channel']
     ) : null,
     log_file: $config['server']['log_file'] ?? null,
-    logger: null, // Aquí puedes pasar un logger si lo necesitas
+    logger: $logger, // Aquí puedes pasar un logger si lo necesitas
     mtlsMiddleware: $mtlsMiddleware,
     sslSettings: $mtlsConfig,
-    timeout: 15, // Tiempo límite para cada tarea en segundos
+    timeout: 15 // Tiempo límite para cada tarea en segundos
+
+
 );
 $server->start();
