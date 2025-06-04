@@ -223,7 +223,7 @@ class ConversionClient
                 throw new RuntimeException("Timeout esperando respuesta del servidor");
             }
 
-            $data = $socket->recv(1.0); // Timeout corto para no bloquear indefinidamente
+            $data = $socket->recv(3.0); // Timeout corto para no bloquear indefinidamente
 
             if ($data === false) {
                 $this->debug("[Error] Error al recibir datos: " . $socket->errMsg); // Debug
@@ -232,7 +232,7 @@ class ConversionClient
 
             if ($data !== '') {
                 $response .= $data;
-                $this->debug("[Info] Respuesta del servidor: {$data}");
+                $this->debug("[Info] Respuesta del servidor: " . trim($data));
                 // Verificar si tenemos la respuesta completa
                 if (strpos($response, "\n") !== false) {
                     // Extraer solo la línea completa
