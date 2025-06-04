@@ -251,34 +251,52 @@ class ConversionServer
     {
         if ($this->mtlsMiddleware !== null) {
             $this->mtlsMiddleware->handle($server, $fd, $data, function ($server, $context) {
-                $this->processAuthenticatedRequest($context['fd'], $context['data']);
+                $this->processRequest($context['fd'], $context['data']);
             });
         } else {
             $this->processRequest($fd, $data);
         }
     }
 
-    /**
-     * Procesa una solicitud autenticada
-     *
-     * @param int $fd Descriptor de archivo del cliente
-     * @param string $data Datos de la solicitud
-     * @return void
-     */
-    private function processAuthenticatedRequest(int $fd, string $data): void
-    {
-        try {
-            $this->logger?->debug("Procesando solicitud autenticada", ['fd' => $fd]);
-            $this->processRequest($fd, $data);
-        } catch (\Throwable $e) {
-            $this->logger?->error("Error procesando solicitud autenticada", [
-                'fd' => $fd,
-                'error' => $e->getMessage()
-            ]);
-            $this->sendError($fd, "Error de procesamiento: " . $e->getMessage());
-        }
-    }
+    private function handleChunkedUpload(int $fd, array $metadata): void {
+        $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
+        $fileSize = 0;
 
+        $this->server->send($fd, 'READY');
+        while (true) {
+            $data = $this->server->recv();
+            $chunkData = json_decode($data, true);
+
+            if ($chunkData['action'] === 'end_upload') {
+                break;
+            }
+
+            if ($chunkData['action'] === 'chunk') {
+                $chunk = base64_decode($chunkData['data']);
+                file_put_contents($tempFile, $chunk, FILE_APPEND);
+                $fileSize += strlen($chunk);
+                $this->server->send($fd, 'ACK');
+            }
+        }
+
+        // Verificar integridad
+        if ($metadata['file_size'] !== null && $fileSize != $metadata['file_size']) {
+            unlink($tempFile);
+            $this->sendError($fd, "Tamaño de archivo no coincide");
+            return;
+        }
+        $request = [
+            'file_path' => $tempFile,
+            'file_content' => null,
+            'output_format' => $metadata['output_format'] ?? 'pdf',
+            'output_path' =>  $metadata['output_path'] ?? null,
+            'mode' => $metadata['mode'] ?? 'stream',
+            'async' => $metadata['async'] ?? false,
+            'queue' => $metadata['queue'] ?? false
+        ];
+        // Procesar el archivo completo
+        $this->processRequest($fd, json_encode($request));
+    }
     /**
      * Procesa una solicitud de conversión
      *
@@ -290,6 +308,17 @@ class ConversionServer
     {
         try {
             $request = json_decode($data, true, 512, JSON_THROW_ON_ERROR);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->sendError($fd, "JSON inválido");
+                return;
+            }
+
+            if ($request['action'] === 'start_upload') {
+                $this->handleChunkedUpload($fd, $request);
+                return;
+            }
+
+
             echo "🌍 Received request: " . json_encode($request) . "\n";
             if ($this->shouldProcessAsync($request)) {
                 $this->processAsync($fd, $request);
@@ -312,8 +341,7 @@ class ConversionServer
      */
     private function shouldProcessAsync(array $request): bool
     {
-        return ($request['async'] ?? false) ||
-            ($this->queueEnabled && ($request['queue'] ?? false));
+        return ($request['async'] ?? false) || ($this->queueEnabled && ($request['queue'] ?? false));
     }
 
     /**
