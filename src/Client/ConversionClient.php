@@ -207,12 +207,12 @@ class ConversionClient
         $startTime = microtime(true);
         $response = '';
         $expectedLength = strlen($expected);
-        $this->debug("Esperando respuesta del servidor..."); // Debug
+        $this->debug("Esperando respuesta del servidor ({$expected})..."); // Debug
 
         while (true) {
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->debug("Timeout esperando respuesta del servidor"); // Debug
+                $this->debug("Timeout esperando respuesta del servidor ({$expected})"); // Debug
                 throw new RuntimeException("Timeout esperando respuesta: '$expected'");
             }
 
