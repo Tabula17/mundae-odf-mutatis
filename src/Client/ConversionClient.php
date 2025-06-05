@@ -212,7 +212,7 @@ class ConversionClient
 
         while (true) {
             $this->debug("Esperando respuesta...", [
-                'expected' => trim($expected),
+                'expected' => $expected === "\n" ? 'Line break' : trim($expected),
                 'time_elapsed' => microtime(true) - $startTime
             ]);
             // Verificar timeout
