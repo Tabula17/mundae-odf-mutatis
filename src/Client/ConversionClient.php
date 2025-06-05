@@ -166,7 +166,12 @@ class ConversionClient
                 if (isset($decoded['result'])) {
                     //$outputPath
                  //   file_put_contents($outputPath, base64_decode($decoded['result']));
-                    System::writeFile($outputPath, base64_decode($decoded['result']));
+                    //System::writeFile($outputPath, base64_decode($decoded['result']));
+                    $data = base64_decode($decoded['result']);
+                    $written = Coroutine\System::writeFile($outputPath, $data);
+                    if ($written !== strlen($data)) {
+                        throw new RuntimeException("Escritura incompleta");
+                    }
                     $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
                 }
                 $this->logger?->debug("Envio de archivo completado", [
@@ -230,7 +235,7 @@ class ConversionClient
                 'action' => 'chunk',
                 'data' => base64_encode($chunk),
                 'size' => strlen($chunk)
-            ]) . "\n";  // Asegurar terminación con \n
+            ], JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_INVALID_UTF8_IGNORE) . "\n";  // Asegurar terminación con \n
 
         if (!$socket->send($payload)) {
             $this->logger?->debug('[Error] Enviando chunk: ' . $socket->errMsg); // Debug
