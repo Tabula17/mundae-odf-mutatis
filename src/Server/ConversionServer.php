@@ -268,99 +268,6 @@ class ConversionServer
             $this->processRequest($fd, $data);
         }
     }
-
-    private function NOhandleChunkedUpload_(int $fd, array $metadata): void
-    {
-        $tempFile = tempnam(sys_get_temp_dir(), 'upload_');
-        $fileSize = 0;
-        // Crear un nuevo socket para comunicarse con el cliente
-        $socket = new Socket(AF_INET, SOCK_STREAM, 0);
-        // Obtener el socket del cliente como recurso
-        $clientSocket = $this->server->getSocket($fd);
-        if (!$clientSocket || !$socket::import($clientSocket)) {
-            $this->sendError($fd, "Failed to import socket");
-            return;
-        }
-        // Configurar timeout
-        $socket->setOption(SOL_SOCKET, SO_RCVTIMEO, ['sec' => 5, 'usec' => 0]);
-        $socket->setOption(SOL_SOCKET, SO_SNDTIMEO, ['sec' => 5, 'usec' => 0]);
-        // Enviar confirmación de ready
-        $socket->send("READY\n");
-        // Buffer para datos no completos
-        $buffer = '';
-        try {
-            while (true) {
-                $data = $socket->recv(8192); // Leer hasta 8KB
-                if ($data === false) {
-                    $this->logger?->error("Error receiving data: {$socket->errMsg}");
-                    throw new RuntimeException("Error receiving data: {$socket->errMsg}");
-                }
-                if ($data === '') {
-                    // Conexión cerrada por cliente
-                    $this->logger?->debug("Empty buffer: connection closed by client");
-                    break;
-                }
-                $buffer .= $data;
-
-                $this->logger?->debug("Received chunk data: " . var_export(strlen($data), true));
-                // Procesar mensajes completos (terminados en \n)
-                while (($pos = strpos($buffer, "\n")) !== false) {
-                    $message = substr($buffer, 0, $pos);
-                    $buffer = substr($buffer, $pos + 1);
-
-                    $chunkData = json_decode($message, true);
-                    $this->logger?->debug("Received chunk data: " . strlen($chunkData). " bytes");
-
-                    if (json_last_error() !== JSON_ERROR_NONE) {
-                        $this->logger?->error("Invalid JSON chunk: " . json_last_error_msg());
-                        throw new RuntimeException("Invalid JSON chunk");
-                    }
-
-                    if ($chunkData['action'] === 'end_upload') {
-                        $this->logger?->debug("End of upload received");
-                        break 2; // Salir de ambos bucles
-                    }
-
-                    if ($chunkData['action'] === 'chunk') {
-                        $chunk = base64_decode($chunkData['data']);
-                        if ($chunk === false) {
-                            throw new RuntimeException("Invalid base64 data");
-                        }
-
-                        file_put_contents($tempFile, $chunk, FILE_APPEND);
-                        $fileSize += $chunkData['size'];
-                        $socket->send("ACK\n");
-                    }
-                }
-            }
-            // Verificar integridad
-            if (isset($metadata['file_size']) && $fileSize != $metadata['file_size']) {
-                $this->logger?->error("File size mismatch: expected {$metadata['file_size']}, got $fileSize");
-                throw new RuntimeException("File size mismatch: expected {$metadata['file_size']}, got $fileSize");
-            }
-
-            $this->logger?->debug("Received file: {$tempFile} ({$fileSize} bytes)");
-            $request = [
-                'file_path' => $tempFile,
-                'file_content' => null,
-                'output_format' => $metadata['output_format'] ?? 'pdf',
-                'output_path' => $metadata['output_path'] ?? null,
-                'mode' => $metadata['mode'] ?? 'stream',
-                'async' => $metadata['async'] ?? false,
-                'queue' => $metadata['queue'] ?? false
-            ];
-            // Procesar el archivo completo
-            $this->processRequest($fd, json_encode($request));
-
-        } catch (\Throwable $e) {
-            $this->logger?->error("Error handling chunked upload: " . $e->getMessage());
-            $this->sendError($fd, $e->getMessage());
-        } finally {
-            if (file_exists($tempFile)) {
-                unlink($tempFile);
-            }
-        }
-    }
     private array $uploadBuffers = [];
     private array $uploadFiles = [];
     private array $uploadSizes = [];
@@ -416,11 +323,18 @@ class ConversionServer
     }
     private function finalizeUpload(int $fd, array $metadata): void {
         if (!isset($this->uploadFiles[$fd])) {
+            $this->logger?->error("No active upload for fd {$fd}");
             throw new RuntimeException("No active upload for this connection");
         }
 
         // Verificar tamaño del archivo
         if (isset($metadata['file_size']) && $this->uploadSizes[$fd] != $metadata['file_size']) {
+            $this->logger?->error(sprintf(
+                "File size mismatch for fd %d (expected: %d, received: %d)",
+                $fd,
+                $metadata['file_size'],
+                $this->uploadSizes[$fd]
+            ));
             throw new RuntimeException(sprintf(
                 "File size mismatch (expected: %d, received: %d)",
                 $metadata['file_size'],
@@ -539,12 +453,13 @@ class ConversionServer
                 outPath: $request['output_path'] ?? null,
                 mode: $request['mode'] ?? 'stream'
             );
-            $this->logger?->debug("Converted request to mode {$request['mode']}");
+            $this->logger?->debug("Converted request $fd to mode {$request['mode']}".(isset($request['output_path']) ? " con destino {$request['output_path']}" : ', envío directo al cliente'));
             $this->sendResponse($fd, [
                 'status' => 'success',
                 'result' => $result
             ]);
         } catch (\Throwable $e) {
+            $this->logger?->error("Error processing request: " . $e->getMessage() . " bytes\n{$e->getTraceAsString()}");
             $this->sendError($fd, $e->getMessage());
         }
     }

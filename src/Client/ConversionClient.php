@@ -135,7 +135,7 @@ class ConversionClient
             $socket->send(json_encode(['action' => 'end_upload']) . "\n");
 
             // Recibir respuesta final
-            $response = $this->waitForResponse($socket, "\n", $this->timeout);
+            $response = $this->waitForResponse($socket, null, $this->timeout);
 
             $decoded = json_decode($response, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -223,7 +223,7 @@ class ConversionClient
         $this->waitForResponse($socket, "ACK\n", $this->timeout);
     }
 
-    private function waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
+    private function waitForResponse(Client $socket, ?string $expected = null, float $timeout = 5.0): string
     {
         $startTime = microtime(true);
         $response = '';
@@ -257,20 +257,17 @@ class ConversionClient
 
             if ($data !== '') {
                 $response .= $data;
-                $this->debug("Respuesta del servidor: " . trim($data));
-
-                $this->debug("Respuesta acumulada: " . strlen($response) ." bytes"); // Debug
-                $this->debug("Respuesta esperada: {$expectedLength} bytes"); // Debug
-                // Verificar si tenemos la respuesta completa esperada
-                if (strlen($response) >= $expectedLength) {
-                    $this->debug("Respuesta completa recibida: " . trim($response)); // Debug
-                    $actualResponse = substr($response, 0, $expectedLength);
-                    if ($actualResponse === $expected) {
-                        // Devolver solo la respuesta esperada
-                        return $actualResponse;
+                // Caso 1: Esperamos una respuesta específica (READY/ACK)
+                if ($expected !== null) {
+                    if (str_contains($response, $expected)) {
+                        return $expected;
                     }
-
-                    // Si no coincide, seguir esperando (puede ser un mensaje más largo)
+                }
+                // Caso 2: Esperamos cualquier JSON terminado en \n
+                else {
+                    if (str_contains($response, "\n")) {
+                        return trim($response);
+                    }
                 }
             }
 
