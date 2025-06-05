@@ -165,7 +165,8 @@ class ConversionClient
             if ($mode !== 'stream') {
                 if (isset($decoded['result'])) {
                     //$outputPath
-                    file_put_contents($outputPath, $decoded['result']);
+                 //   file_put_contents($outputPath, base64_decode($decoded['result']));
+                    System::writeFile($outputPath, base64_decode($decoded['result']));
                     $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
                 }
                 $this->logger?->debug("Envio de archivo completado", [
