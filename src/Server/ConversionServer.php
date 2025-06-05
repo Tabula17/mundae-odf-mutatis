@@ -530,7 +530,7 @@ class ConversionServer
      */
     private function sendResponse(int $fd, array $response): void
     {
-        $this->server->send($fd, json_encode($response, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_INVALID_UTF8_IGNORE));
+        $this->server->send($fd, json_encode($response, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_INVALID_UTF8_IGNORE)."\n");
     }
 
     /**

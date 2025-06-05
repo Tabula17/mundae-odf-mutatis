@@ -252,8 +252,8 @@ class ConversionClient
             ]);
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->logger?->debug("Timeout ({$timeout}s) esperando respuesta del servidor: ".$expected === null ? 'JSON' : trim($expected)); // Debug
-                throw new RuntimeException("Timeout ({$timeout}s) esperando respuesta del servidor: ".$expected === null ? 'JSON' : trim($expected));
+                $this->logger?->debug("Timeout ({$timeout}s) esperando respuesta del servidor: ".($expected === null ? 'JSON' : trim($expected))); // Debug
+                throw new RuntimeException("Timeout ({$timeout}s) esperando respuesta del servidor: ".($expected === null ? 'JSON' : trim($expected)));
             }
 
             $data = $socket->recv(1.0); // Timeout corto para chequeos
