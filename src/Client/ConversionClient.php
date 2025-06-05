@@ -147,19 +147,19 @@ class ConversionClient
             $this->logger?->debug("Respuesta del servidor: " . $response); // Debug
             $decoded = json_decode($response, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $this->logger?->debug("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
+                $this->logger?->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
                 throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
             }
             if (!isset($decoded['status']) || $decoded['status'] !== 'success') {
-                $this->logger?->debug("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
+                $this->logger?->error("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
                 throw new RuntimeException("Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error'));
             }
             if ($mode !== 'stream' && !isset($outputPath)) {
-                $this->logger?->debug("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
+                $this->logger?->error("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'file' requiere output_file en la respuesta");
             }
             if ($mode === 'stream' && !isset($decoded['result'])) {
-                $this->logger?->debug("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
+                $this->logger?->error("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'stream' requiere content en la respuesta");
             }
             if ($mode !== 'stream') {

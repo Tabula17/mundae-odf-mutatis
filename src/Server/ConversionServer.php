@@ -85,9 +85,10 @@ class ConversionServer
     private function initializeConverter(): void
     {
         $this->converter = new UnoserverLoadBalancer(
-            $this->healthMonitor,
-            $this->concurrency ?? 10,
-            $this->timeout
+            healthMonitor: $this->healthMonitor,
+            concurrency: $this->concurrency ?? 10,
+            timeout: $this->timeout,
+            logger: $this->logger,
         );
     }
 
