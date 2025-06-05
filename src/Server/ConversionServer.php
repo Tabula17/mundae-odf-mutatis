@@ -8,7 +8,6 @@ use Tabula17\Mundae\Odf\Mutatis\Exception\InvalidArgumentException;
 use Tabula17\Mundae\Odf\Mutatis\Exception\RuntimeException;
 use Tabula17\Satelles\Odf\Adiutor\Unoserver\ServerHealthMonitor;
 use Tabula17\Satelles\Odf\Adiutor\Unoserver\UnoserverLoadBalancer;
-use Tabula17\Satelles\Utilis\Console\VerboseTrait;
 use Tabula17\Satelles\Utilis\Queue\QueueInterface;
 use Tabula17\Satelles\Utilis\Middleware\TCPmTLSAuthMiddleware;
 use Psr\Log\LoggerInterface;

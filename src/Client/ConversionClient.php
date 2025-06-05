@@ -2,6 +2,7 @@
 
 namespace Tabula17\Mundae\Odf\Mutatis\Client;
 
+use Psr\Log\LoggerInterface;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Client;
 use Swoole\Coroutine\System;
@@ -14,8 +15,6 @@ use Tabula17\Satelles\Utilis\Console\VerboseTrait;
  */
 class ConversionClient
 {
-    use VerboseTrait;
-
     private string $host;
     private int $port;
     private ?string $sslCertFile;
@@ -34,15 +33,15 @@ class ConversionClient
      * @param bool $sslVerifyPeer Verificar certificado del servidor
      */
     public function __construct(
-        string               $host = '127.0.0.1',
-        int                  $port = 9501,
-        ?string              $sslCertFile = null,
-        ?string              $sslKeyFile = null,
-        ?string              $sslCaFile = null,
-        bool                 $sslVerifyPeer = true,
-        private int          $chunkSize = 8192, // Tamaño de chunk para lectura de archivos
-        private float        $timeout = 5, // Timeout para conexiones
-        private readonly int $verbose = self::ERROR // Nivel de verbosidad para debug
+        string                            $host = '127.0.0.1',
+        int                               $port = 9501,
+        ?string                           $sslCertFile = null,
+        ?string                           $sslKeyFile = null,
+        ?string                           $sslCaFile = null,
+        bool                              $sslVerifyPeer = true,
+       // private int                       $chunkSize = 8192, // Tamaño de chunk para lectura de archivos
+        private readonly float            $timeout = 5, // Timeout para conexiones
+        private readonly ?LoggerInterface $logger = null
     )
     {
         $this->host = $host;
@@ -79,7 +78,7 @@ class ConversionClient
         int     $chunkSize = 8192
     ): array
     {
-        $this->debug("Iniciando conversión", [
+        $this->logger?->debug("Iniciando conversión", [
             'filePath' => $filePath,
             'outputFormat' => $outputFormat,
             'outputPath' => $outputPath,
@@ -90,7 +89,7 @@ class ConversionClient
         ]);
         // Validación básica
         if ($filePath === null && $fileContent === null) {
-            $this->error("Debe proveer filePath o fileContent");
+            $this->logger?->debug("Debe proveer filePath o fileContent");
             throw new InvalidArgumentException("Debe proveer filePath o fileContent");
         }
         $socket = new Client(SWOOLE_SOCK_TCP);
@@ -110,7 +109,7 @@ class ConversionClient
             ]);
         }
         if (!$socket->connect($this->host, $this->port, 5)) {
-            $this->error("Error al conectar al host {$this->host}: {$socket->errMsg} (Código: {$socket->errCode})"); // Debug
+            $this->logger?->debug("Error al conectar al host {$this->host}: {$socket->errMsg} (Código: {$socket->errCode})"); // Debug
             throw new RuntimeException("Connection failed: {$socket->errMsg} (Code: {$socket->errCode})");
         }
         try {
@@ -129,7 +128,7 @@ class ConversionClient
                 $metadata['file_size'] = filesize($filePath);
             }
             if (!$socket->send(json_encode($metadata))) {
-                $this->error("[Error] Enviando metadata: " . $socket->errMsg); // Debug
+                $this->logger?->debug("[Error] Enviando metadata: " . $socket->errMsg); // Debug
                 throw new RuntimeException("Error al enviar metadata: {$socket->errMsg}");
             }
             // Procesar el contenido del archivo
@@ -145,22 +144,22 @@ class ConversionClient
 
             // Recibir respuesta final
             $response = $this->waitForResponse($socket, null, $this->timeout);
-            $this->debug("Respuesta del servidor: " . $response); // Debug
+            $this->logger?->debug("Respuesta del servidor: " . $response); // Debug
             $decoded = json_decode($response, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
+                $this->logger?->debug("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
                 throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
             }
             if (!isset($decoded['status']) || $decoded['status'] !== 'success') {
-                $this->error("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
+                $this->logger?->debug("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
                 throw new RuntimeException("Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error'));
             }
             if ($mode !== 'stream' && !isset($outputPath)) {
-                $this->error("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
+                $this->logger?->debug("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'file' requiere output_file en la respuesta");
             }
             if ($mode === 'stream' && !isset($decoded['result'])) {
-                $this->error("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
+                $this->logger?->debug("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'stream' requiere content en la respuesta");
             }
             if ($mode !== 'stream') {
@@ -169,12 +168,12 @@ class ConversionClient
                     file_put_contents($outputPath, $decoded['result']);
                     $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
                 }
-                $this->debug("Envio de archivo completado", [
+                $this->logger?->debug("Envio de archivo completado", [
                     'outputPath' => $decoded['result'] ?? null,
                     'status' => $decoded['status']
                 ]);
-            }else{
-                $this->debug("Envio de contenido completado", [
+            } else {
+                $this->logger?->debug("Envio de contenido completado", [
                     'contentLength' => strlen($decoded['result'] ?? ''),
                     'status' => $decoded['status']
                 ]);
@@ -190,12 +189,12 @@ class ConversionClient
     {
         $file = fopen($filePath, 'rb');
         if ($file === false) {
-            $this->error("[Error] No se pudo abrir el archivo: $filePath"); // Debug
+            $this->logger?->debug("[Error] No se pudo abrir el archivo: $filePath"); // Debug
             throw new RuntimeException("No se pudo abrir el archivo: $filePath");
         }
 
         try {
-            $this->debug("Enviando archivo en chunks: $filePath"); // Debug
+            $this->logger?->debug("Enviando archivo en chunks: $filePath"); // Debug
             // Esperar READY específico
             $this->waitForResponse($socket, "READY\n", $this->timeout);
 
@@ -233,7 +232,7 @@ class ConversionClient
             ]) . "\n";  // Asegurar terminación con \n
 
         if (!$socket->send($payload)) {
-            $this->debug('[Error] Enviando chunk: ' . $socket->errMsg); // Debug
+            $this->logger?->debug('[Error] Enviando chunk: ' . $socket->errMsg); // Debug
             throw new RuntimeException("Error al enviar chunk: {$socket->errMsg}");
         }
 
@@ -247,18 +246,18 @@ class ConversionClient
         $response = '';
 
         while (true) {
-            $this->debug("Esperando respuesta...", [
+            $this->logger?->debug("Esperando respuesta...", [
                 'expected' => $expected === null ? 'JSON' : trim($expected),
                 'time_elapsed' => microtime(true) - $startTime
             ]);
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->debug("Timeout esperando respuesta del servidor ({$expected})"); // Debug
+                $this->logger?->debug("Timeout esperando respuesta del servidor ({$expected})"); // Debug
                 throw new RuntimeException("Timeout esperando respuesta: '$expected'");
             }
 
             $data = $socket->recv(1.0); // Timeout corto para chequeos
-            $this->debug("Datos recibidos", [
+            $this->logger?->debug("Datos recibidos", [
                 'data' => $data !== '' ? substr($data, 0, 50) . '...' : 'empty',
                 'errCode' => $socket->errCode ?? null,
                 'errMsg' => $socket->errMsg ?? null
@@ -268,7 +267,7 @@ class ConversionClient
                 if ($socket->errCode === SOCKET_ETIMEDOUT) {
                     continue; // Reintentar si es solo timeout
                 }
-                $this->error("[Error] Error al recibir datos: {$socket->errMsg}"); // Debug
+                $this->logger?->debug("[Error] Error al recibir datos: {$socket->errMsg}"); // Debug
                 throw new RuntimeException("Error de conexión [{$socket->errCode}]: {$socket->errMsg}");
             }
 
@@ -296,28 +295,28 @@ class ConversionClient
     {
         $startTime = microtime(true);
         $response = '';
-        $this->debug("Esperando respuesta del servidor..."); // Debug
+        $this->logger?->debug("Esperando respuesta del servidor..."); // Debug
 
         while (true) {
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->debug("Timeout esperando respuesta del servidor"); // Debug
+                $this->logger?->debug("Timeout esperando respuesta del servidor"); // Debug
                 throw new RuntimeException("Timeout esperando respuesta del servidor");
             }
 
             $data = $socket->recv(3.0); // Timeout corto para no bloquear indefinidamente
 
             if ($data === false) {
-                $this->debug("[Error] Error al recibir datos: " . $socket->errMsg); // Debug
+                $this->logger?->debug("[Error] Error al recibir datos: " . $socket->errMsg); // Debug
                 throw new RuntimeException("Error de conexión: {$socket->errMsg}");
             }
 
             if ($data !== '') {
                 $response .= $data;
-                $this->debug("Respuesta del servidor: " . trim($data));
+                $this->logger?->debug("Respuesta del servidor: " . trim($data));
                 // Verificar si tenemos la respuesta completa
                 if (str_contains($response, "\n")) {
-                    $this->debug("Respuesta completa recibida: " . trim($response)); // Debug
+                    $this->logger?->debug("Respuesta completa recibida: " . trim($response)); // Debug
                     // Extraer solo la línea completa
                     $lines = explode("\n", $response, 2);
                     $completeLine = $lines[0] . "\n";
@@ -356,7 +355,7 @@ class ConversionClient
 
                 $callback($result);
             } catch (\Throwable $e) {
-                $this->error("[Error] Al convertir (async): " . $e->getMessage()); // Debug
+                $this->logger?->debug("[Error] Al convertir (async): " . $e->getMessage()); // Debug
                 $callback([
                     'status' => 'error',
                     'message' => $e->getMessage()
@@ -384,14 +383,9 @@ class ConversionClient
 
             return $socket->connect($this->host, $this->port, 2);
         } catch (\Throwable $e) {
-            $this->error("Error al conectar al host {$this->host}: " . $e->getMessage()); // Debug
+            $this->logger?->debug("Error al conectar al host {$this->host}: " . $e->getMessage()); // Debug
             return false;
         }
     }
 
-    private function isVerbose(int $level): bool
-    {
-        $this->verboseIcon = '🌏';
-        return $level >= $this->verbose;
-    }
 }
