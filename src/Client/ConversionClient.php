@@ -252,8 +252,8 @@ class ConversionClient
             ]);
             // Verificar timeout
             if ((microtime(true) - $startTime) > $timeout) {
-                $this->logger?->debug("Timeout esperando respuesta del servidor ({$expected})"); // Debug
-                throw new RuntimeException("Timeout esperando respuesta: '$expected'");
+                $this->logger?->debug("Timeout ({$timeout}s) esperando respuesta del servidor: ".$expected === null ? 'JSON' : trim($expected)); // Debug
+                throw new RuntimeException("Timeout ({$timeout}s) esperando respuesta del servidor: ".$expected === null ? 'JSON' : trim($expected));
             }
 
             $data = $socket->recv(1.0); // Timeout corto para chequeos
@@ -275,14 +275,15 @@ class ConversionClient
                 $response .= $data;
                 // Caso 1: Esperamos una respuesta específica (READY/ACK)
                 if ($expected !== null) {
+                    $this->logger?->debug("Respuesta $expected parcial recibida: " . trim($response)); // Debug
                     if (str_contains($response, $expected)) {
+                        $this->logger?->debug("Respuesta completa recibida: " . trim($response)); // Debug
                         return $expected;
                     }
                 } // Caso 2: Esperamos cualquier JSON terminado en \n
-                else {
-                    if (str_contains($response, "\n")) {
-                        return trim($response);
-                    }
+                else if (str_contains($response, "\n")) {
+                    $this->logger?->debug("Respuesta JSON recibida: " . trim($response)); // Debug
+                    return trim($response);
                 }
             }
 
