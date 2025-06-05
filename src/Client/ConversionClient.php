@@ -298,49 +298,6 @@ class ConversionClient
         }
     }
 
-    private function x_waitForResponse(Client $socket, string $expected, float $timeout = 5.0): string
-    {
-        $startTime = microtime(true);
-        $response = '';
-        $this->logger?->debug("Esperando respuesta del servidor..."); // Debug
-
-        while (true) {
-            // Verificar timeout
-            if ((microtime(true) - $startTime) > $timeout) {
-                $this->logger?->debug("Timeout esperando respuesta del servidor"); // Debug
-                throw new RuntimeException("Timeout esperando respuesta del servidor");
-            }
-
-            $data = $socket->recv(3.0); // Timeout corto para no bloquear indefinidamente
-
-            if ($data === false) {
-                $this->logger?->debug("[Error] Error al recibir datos: " . $socket->errMsg); // Debug
-                throw new RuntimeException("Error de conexión: {$socket->errMsg}");
-            }
-
-            if ($data !== '') {
-                $response .= $data;
-                $this->logger?->debug("Respuesta del servidor: " . trim($data));
-                // Verificar si tenemos la respuesta completa
-                if (str_contains($response, "\n")) {
-                    $this->logger?->debug("Respuesta completa recibida: " . trim($response)); // Debug
-                    // Extraer solo la línea completa
-                    $lines = explode("\n", $response, 2);
-                    $completeLine = $lines[0] . "\n";
-
-                    // Guardar el resto para la próxima lectura
-                    $response = $lines[1] ?? '';
-
-                    return $completeLine;
-                }
-            }
-
-
-            // Pequeña pausa para evitar uso intensivo de CPU
-            usleep(10000); // 10ms
-        }
-    }
-
     /**
      * Versión asíncrona con callback
      */
