@@ -259,7 +259,7 @@ class ConversionClient
 
             $data = $socket->recv(1.0); // Timeout corto para chequeos
             $this->debug("Datos recibidos", [
-                'data' => $data,
+                'data' => $data !== '' ? substr($data, 0, 50) . '...' : 'empty',
                 'errCode' => $socket->errCode ?? null,
                 'errMsg' => $socket->errMsg ?? null
             ]);
