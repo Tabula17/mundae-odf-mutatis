@@ -131,11 +131,11 @@ class ConversionClient
                 // Si nos dan una ruta de archivo
                 $this->sendFileInChunks($socket, $filePath, $chunkSize);
             }
-
             // Indicar fin de transmisión
-            $socket->send(json_encode(['action' => 'end_upload']));
+            $socket->send(json_encode(['action' => 'end_upload']) . "\n");
+
+            // Recibir respuesta final
             $response = $this->waitForResponse($socket, "\n", $this->timeout);
-            //return json_decode($response, true);
 
             $decoded = json_decode($response, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
