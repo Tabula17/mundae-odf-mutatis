@@ -145,7 +145,7 @@ class ConversionClient
 
             // Recibir respuesta final
             $response = $this->waitForResponse($socket, null, $this->timeout);
-
+            $this->debug("Respuesta del servidor: " . $response); // Debug
             $decoded = json_decode($response, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
@@ -169,6 +169,15 @@ class ConversionClient
                     file_put_contents($outputPath, $decoded['result']);
                     $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
                 }
+                $this->debug("Envio de archivo completado", [
+                    'outputPath' => $decoded['result'] ?? null,
+                    'status' => $decoded['status']
+                ]);
+            }else{
+                $this->debug("Envio de contenido completado", [
+                    'contentLength' => strlen($decoded['result'] ?? ''),
+                    'status' => $decoded['status']
+                ]);
             }
 
             return $decoded;
