@@ -79,6 +79,15 @@ class ConversionClient
         int     $chunkSize = 8192
     ): array
     {
+        $this->debug("Iniciando conversión", [
+            'filePath' => $filePath,
+            'outputFormat' => $outputFormat,
+            'outputPath' => $outputPath,
+            'async' => $async,
+            'useQueue' => $useQueue,
+            'mode' => $mode,
+            'chunkSize' => $chunkSize
+        ]);
         // Validación básica
         if ($filePath === null && $fileContent === null) {
             $this->error("Debe proveer filePath o fileContent");
@@ -142,20 +151,20 @@ class ConversionClient
                 $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
                 throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
             }
-            if(!isset($decoded['status']) || $decoded['status'] !== 'success') {
+            if (!isset($decoded['status']) || $decoded['status'] !== 'success') {
                 $this->error("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
                 throw new RuntimeException("Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error'));
             }
-            if($mode !== 'stream' && !isset($outputPath)) {
+            if ($mode !== 'stream' && !isset($outputPath)) {
                 $this->error("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'file' requiere output_file en la respuesta");
             }
-            if($mode === 'stream' && !isset($decoded['result'])) {
+            if ($mode === 'stream' && !isset($decoded['result'])) {
                 $this->error("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
                 throw new RuntimeException("Modo 'stream' requiere content en la respuesta");
             }
-            if($mode !== 'stream') {
-                if(isset($decoded['result'])) {
+            if ($mode !== 'stream') {
+                if (isset($decoded['result'])) {
                     //$outputPath
                     file_put_contents($outputPath, $decoded['result']);
                     $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
@@ -227,11 +236,10 @@ class ConversionClient
     {
         $startTime = microtime(true);
         $response = '';
-        $expectedLength = strlen($expected);
 
         while (true) {
             $this->debug("Esperando respuesta...", [
-                'expected' => $expected ? 'Resp. Final' : trim($expected),
+                'expected' => $expected === null ? 'JSON' : trim($expected),
                 'time_elapsed' => microtime(true) - $startTime
             ]);
             // Verificar timeout
@@ -262,8 +270,7 @@ class ConversionClient
                     if (str_contains($response, $expected)) {
                         return $expected;
                     }
-                }
-                // Caso 2: Esperamos cualquier JSON terminado en \n
+                } // Caso 2: Esperamos cualquier JSON terminado en \n
                 else {
                     if (str_contains($response, "\n")) {
                         return trim($response);
