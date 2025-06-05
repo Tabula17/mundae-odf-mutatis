@@ -142,6 +142,25 @@ class ConversionClient
                 $this->error("[Error] Respuesta JSON inválida: " . json_last_error_msg()); // Debug
                 throw new RuntimeException("Respuesta inválida: " . json_last_error_msg());
             }
+            if(!isset($decoded['status']) || $decoded['status'] !== 'success') {
+                $this->error("[Error] Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error')); // Debug
+                throw new RuntimeException("Conversión fallida: " . ($decoded['message'] ?? 'Sin mensaje de error'));
+            }
+            if($mode !== 'stream' && !isset($outputPath)) {
+                $this->error("[Error] Modo 'file' requiere output_file en la respuesta"); // Debug
+                throw new RuntimeException("Modo 'file' requiere output_file en la respuesta");
+            }
+            if($mode === 'stream' && !isset($decoded['result'])) {
+                $this->error("[Error] Modo 'stream' requiere content en la respuesta"); // Debug
+                throw new RuntimeException("Modo 'stream' requiere content en la respuesta");
+            }
+            if($mode !== 'stream') {
+                if(isset($decoded['result'])) {
+                    //$outputPath
+                    file_put_contents($outputPath, $decoded['result']);
+                    $decoded['result'] = $outputPath; // Limpiar contenido para evitar duplicados
+                }
+            }
 
             return $decoded;
         } finally {
@@ -232,6 +251,7 @@ class ConversionClient
                 if ($socket->errCode === SOCKET_ETIMEDOUT) {
                     continue; // Reintentar si es solo timeout
                 }
+                $this->error("[Error] Error al recibir datos: {$socket->errMsg}"); // Debug
                 throw new RuntimeException("Error de conexión [{$socket->errCode}]: {$socket->errMsg}");
             }
 
@@ -239,6 +259,8 @@ class ConversionClient
                 $response .= $data;
                 $this->debug("Respuesta del servidor: " . trim($data));
 
+                $this->debug("Respuesta acumulada: " . strlen($response) ." bytes"); // Debug
+                $this->debug("Respuesta esperada: {$expectedLength} bytes"); // Debug
                 // Verificar si tenemos la respuesta completa esperada
                 if (strlen($response) >= $expectedLength) {
                     $this->debug("Respuesta completa recibida: " . trim($response)); // Debug

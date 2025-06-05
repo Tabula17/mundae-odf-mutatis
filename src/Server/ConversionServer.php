@@ -379,7 +379,7 @@ class ConversionServer
         try {
             $this->uploadBuffers[$fd] .= $data;
 
-            while (($pos = strpos($this->uploadBuffers[$fd], "\n")) !== false) {
+            while (isset($this->uploadBuffers[$fd]) && ($pos = strpos($this->uploadBuffers[$fd], "\n")) !== false) {
                 $message = substr($this->uploadBuffers[$fd], 0, $pos);
                 $this->uploadBuffers[$fd] = substr($this->uploadBuffers[$fd], $pos + 1);
 
@@ -493,7 +493,7 @@ class ConversionServer
                 return;
             }
 
-            $this->logger?->debug("Received request: " . $request['action'] === 'chunk' ? ' Receiving chunk' : json_encode($request));
+            $this->logger?->debug("Received request: " .  (isset($request['action']) && $request['action'] === 'chunk') ? ' Receiving chunk' : json_encode($request));
             if ($this->shouldProcessAsync($request)) {
                 $this->processAsync($fd, $request);
             } else {
@@ -528,6 +528,7 @@ class ConversionServer
     {
         try {
             if (empty($request['file_path']) && empty($request['file_content'])) {
+                $this->logger?->error("No file path or content provided in request");
                 throw new InvalidArgumentException("Debe proporcionar 'file_path' o 'file_content'");
             }
             $this->logger?->debug("Processing request synchronously in mode {$request['mode']}");
@@ -538,7 +539,7 @@ class ConversionServer
                 outPath: $request['output_path'] ?? null,
                 mode: $request['mode'] ?? 'stream'
             );
-
+            $this->logger?->debug("Converted request to mode {$request['mode']}");
             $this->sendResponse($fd, [
                 'status' => 'success',
                 'result' => $result
